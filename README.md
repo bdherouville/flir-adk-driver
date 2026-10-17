@@ -16,15 +16,23 @@ Portable C driver for the FLIR ADK 75° thermal camera (Boson 640 core). V4L2 ca
 
 **Software spot meter** -- ROI statistics (mean, std, min/max with pixel location) computed from RAW16 frames. Works on any camera variant including non-radiometric units.
 
+**Thermal OSD overlay** -- Professional camera-style display with center crosshair + temperature reading, spot meter ROI box, FPA temperature, and iron-bow color bar with scale. Selectable temperature units (°C, °F, K) via linear calibration from FPA reference.
+
 **CCI capability probe** -- Discovers which camera modules are available (radiometry, spot meter, TLinear, AGC, etc.) at runtime.
 
 **Cross-compilation** -- Builds with any C11 toolchain. Tested targets: x86_64, aarch64 (Jetson Orin, NXP i.MX8), MIPS (OpenWrt/QCA9533). Platform accelerator interface for GPU-accelerated processing.
 
 ## Sample Output
 
-| RAW16 (14-bit) | HEQ Grayscale | Iron-bow False Color |
+| RAW16 (14-bit) | HEQ Grayscale | Iron-bow + OSD |
 |:-:|:-:|:-:|
 | ![RAW16](doc/raw16.png) | ![HEQ](doc/heq_grayscale.png) | ![Iron-bow](doc/iron_bow.png) |
+
+### Temperature Units
+
+| Celsius | Fahrenheit | Kelvin |
+|:-:|:-:|:-:|
+| ![°C](doc/iron_bow_celsius.png) | ![°F](doc/iron_bow_fahrenheit.png) | ![K](doc/iron_bow_kelvin.png) |
 
 CCI probe output on a non-radiometric unit (20640A075-6PADK):
 ```
@@ -80,6 +88,9 @@ Dependencies: libc, libm, Linux kernel headers (V4L2, termios). Nothing else.
 # Full calibration: CCI report + HEQ AGC + spot meter + iron-bow output
 ./flir_calibrate -d /dev/video5 -c /dev/ttyACM0 -n 10 -o output
 
+# Same with temperature display in Fahrenheit (also accepts C or K)
+./flir_calibrate -d /dev/video5 -c /dev/ttyACM0 -n 10 -o output -u F
+
 # Python test with PNG output (requires Pillow + ffmpeg)
 python3 tools/flir_test.py -d /dev/video5 -c /dev/ttyACM0 -n 5 -o output
 ```
@@ -91,6 +102,7 @@ include/flir_adk.h          Public API (opaque handle, enums, frame struct)
 src/capture.c               V4L2 MMAP streaming
 src/cci.c                   FSLP protocol + CCI command wrappers
 src/spotmeter.c             Software spot meter (ROI stats from RAW16)
+src/colorbar.c              Thermal OSD overlay (color bar, crosshair, temp units)
 platform/accel_generic.c    HEQ AGC + iron-bow colorizer (pure C)
 platform/accel_cuda.c       Jetson Orin stub (GPU-accelerated AGC)
 platform/accel_imx8.c       NXP i.MX8 stub (VPU + GPU)
