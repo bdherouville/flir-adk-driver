@@ -4,7 +4,7 @@
  * Captures RAW16 frames, runs HEQ AGC + colorizer, writes PGM/PPM,
  * exercises CCI commands, and reports calibration stats.
  *
- * Usage: flir_calibrate [-d /dev/video5] [-c /dev/ttyACM0] [-n 10] [-o output_dir]
+ * Usage: flir_calibrate [-d /dev/video5] [-c /dev/ttyACM0] [-n 10] [-o output_dir] [-u C|F|K]
  *
  * Output: PGM (grayscale) and PPM (iron-bow) files viewable with any image viewer.
  * Convert to PNG: convert output.ppm output.png (ImageMagick)
@@ -160,16 +160,23 @@ int main(int argc, char **argv)
 	const char *cdev = NULL;
 	const char *outdir = "output";
 	int nframes = 10;
+	enum flir_temp_unit temp_unit = FLIR_UNIT_RAW;
 	int opt;
 
-	while ((opt = getopt(argc, argv, "d:c:o:n:h")) != -1) {
+	while ((opt = getopt(argc, argv, "d:c:o:n:u:h")) != -1) {
 		switch (opt) {
 		case 'd': vdev = optarg; break;
 		case 'c': cdev = optarg; break;
 		case 'o': outdir = optarg; break;
 		case 'n': nframes = atoi(optarg); break;
+		case 'u':
+			if (optarg[0] == 'C' || optarg[0] == 'c') temp_unit = FLIR_UNIT_C;
+			else if (optarg[0] == 'F' || optarg[0] == 'f') temp_unit = FLIR_UNIT_F;
+			else if (optarg[0] == 'K' || optarg[0] == 'k') temp_unit = FLIR_UNIT_K;
+			else { fprintf(stderr, "Unit must be C, F, or K\n"); return 1; }
+			break;
 		default:
-			fprintf(stderr, "Usage: %s [-d dev] [-c cci] [-o dir] [-n frames]\n",
+			fprintf(stderr, "Usage: %s [-d dev] [-c cci] [-o dir] [-n frames] [-u C|F|K]\n",
 				argv[0]);
 			return 1;
 		}
@@ -272,6 +279,10 @@ int main(int argc, char **argv)
 			.spot_row_start = 206, .spot_row_end = 306,
 			.spot_col_start = 220, .spot_col_end = 420,
 			.spot_mean = (uint16_t)spot.mean,
+			.temp_unit = temp_unit,
+			.counts_per_deg = 40.0f,
+			.ref_temp_c = fpa_temp_cx10 / 10.0f,
+			.ref_raw = (uint16_t)mean,
 		};
 		flir_overlay(rgb_buf, raw, W, H, &ov, bar_buf);
 		snprintf(path, sizeof(path), "%s/iron_%03d.ppm", outdir, got);

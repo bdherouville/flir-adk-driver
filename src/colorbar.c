@@ -10,7 +10,7 @@
 #define CHAR_W   (5 * FONT_S + 1)
 #define CHAR_H   (7 * FONT_S)
 
-/* 5x7 bitmap font for 0-9 and punctuation */
+/* 5x7 bitmap font */
 static const uint8_t font5x7[][7] = {
 	[0]  = {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, /* 0 */
 	[1]  = {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E}, /* 1 */
@@ -34,6 +34,10 @@ static const uint8_t font5x7[][7] = {
 	[19] = {0x1F,0x10,0x10,0x1E,0x10,0x10,0x10}, /* F */
 	[20] = {0x1E,0x11,0x11,0x1E,0x10,0x10,0x10}, /* P */
 	[21] = {0x0E,0x11,0x11,0x1F,0x11,0x11,0x11}, /* A */
+	[22] = {0x11,0x11,0x15,0x15,0x15,0x0A,0x0A}, /* W (for raw) */
+	[23] = {0x11,0x11,0x0A,0x04,0x04,0x04,0x04}, /* Y */
+	[24] = {0x11,0x19,0x15,0x13,0x11,0x11,0x11}, /* N */
+	[25] = {0x11,0x12,0x14,0x18,0x14,0x12,0x11}, /* K */
 };
 
 static int char_idx(char c)
@@ -42,7 +46,7 @@ static int char_idx(char c)
 	if (c == '-') return 10;
 	if (c == '.') return 11;
 	if (c == 'C') return 13;
-	if (c == '^') return 14; /* degree symbol */
+	if (c == '^') return 14;
 	if (c == 'E') return 15;
 	if (c == 'R') return 16;
 	if (c == 'O') return 17;
@@ -50,6 +54,10 @@ static int char_idx(char c)
 	if (c == 'F') return 19;
 	if (c == 'P') return 20;
 	if (c == 'A') return 21;
+	if (c == 'W') return 22;
+	if (c == 'Y') return 23;
+	if (c == 'N') return 24;
+	if (c == 'K') return 25;
 	return 12;
 }
 
@@ -71,20 +79,12 @@ static void draw_char_s(uint8_t *rgb, int img_w, int img_h,
 					}
 }
 
-static void draw_text_s(uint8_t *rgb, int img_w, int img_h,
-			int x, int y, const char *s, int scale,
-			uint8_t r, uint8_t g, uint8_t b)
-{
-	int cw = 5 * scale + (scale > 1 ? 1 : 0);
-	for (int i = 0; s[i]; i++)
-		draw_char_s(rgb, img_w, img_h, x + i * cw, y, s[i], scale, r, g, b);
-}
-
 static void draw_text(uint8_t *rgb, int img_w, int img_h,
 		      int x, int y, const char *s,
 		      uint8_t r, uint8_t g, uint8_t b)
 {
-	draw_text_s(rgb, img_w, img_h, x, y, s, FONT_S, r, g, b);
+	for (int i = 0; s[i]; i++)
+		draw_char_s(rgb, img_w, img_h, x + i * CHAR_W, y, s[i], FONT_S, r, g, b);
 }
 
 static void set_pixel(uint8_t *rgb, int img_w, int img_h,
@@ -95,6 +95,15 @@ static void set_pixel(uint8_t *rgb, int img_w, int img_h,
 	rgb[off] = r; rgb[off+1] = g; rgb[off+2] = b;
 }
 
+static void draw_box(uint8_t *rgb, int img_w, int img_h,
+		     int x, int y, int w, int h,
+		     uint8_t r, uint8_t g, uint8_t b)
+{
+	for (int by = y; by < y + h; by++)
+		for (int bx = x; bx < x + w; bx++)
+			set_pixel(rgb, img_w, img_h, bx, by, r, g, b);
+}
+
 /* Iron-bow LUT — must match accel_generic.c */
 static void ironbow_rgb(int idx, uint8_t *r, uint8_t *g, uint8_t *b)
 {
@@ -103,29 +112,72 @@ static void ironbow_rgb(int idx, uint8_t *r, uint8_t *g, uint8_t *b)
 	*b = idx < 64 ? idx*128/64 : idx < 128 ? 128-(idx-64)*128/64 : idx < 192 ? 0 : (idx-192)*255/64;
 }
 
+/* Convert raw count to temperature in the requested unit */
+static float raw_to_temp(uint16_t raw, const struct flir_overlay_opts *o)
+{
+	float c = o->ref_temp_c + (float)((int)raw - (int)o->ref_raw) / o->counts_per_deg;
+	switch (o->temp_unit) {
+	case FLIR_UNIT_F: return c * 9.0f / 5.0f + 32.0f;
+	case FLIR_UNIT_K: return c + 273.15f;
+	default:          return c; /* Celsius */
+	}
+}
+
+static float celsius_to_unit(float c, enum flir_temp_unit u)
+{
+	switch (u) {
+	case FLIR_UNIT_F: return c * 9.0f / 5.0f + 32.0f;
+	case FLIR_UNIT_K: return c + 273.15f;
+	default:          return c;
+	}
+}
+
+static const char *unit_suffix(enum flir_temp_unit u)
+{
+	switch (u) {
+	case FLIR_UNIT_F: return "^F";
+	case FLIR_UNIT_K: return "K";
+	default:          return "^C";
+	}
+}
+
+static int has_temp_cal(const struct flir_overlay_opts *o)
+{
+	return o->temp_unit != FLIR_UNIT_RAW && o->counts_per_deg > 0;
+}
+
+/* Format a value: either raw count or temperature with unit */
+static void fmt_value(char *buf, size_t sz, uint16_t raw,
+		      const struct flir_overlay_opts *o)
+{
+	if (has_temp_cal(o)) {
+		float t = raw_to_temp(raw, o);
+		snprintf(buf, sz, "%.1f%s", t, unit_suffix(o->temp_unit));
+	} else {
+		snprintf(buf, sz, "%u", raw);
+	}
+}
+
 static void draw_crosshair(uint8_t *rgb, int img_w, int img_h, int cx, int cy)
 {
 	int arm = 20, gap = 6;
-	/* Horizontal arms */
 	for (int x = cx - arm; x <= cx + arm; x++) {
 		if (x >= cx - gap && x <= cx + gap) continue;
 		set_pixel(rgb, img_w, img_h, x, cy, 255, 255, 255);
 		set_pixel(rgb, img_w, img_h, x, cy-1, 0, 0, 0);
 		set_pixel(rgb, img_w, img_h, x, cy+1, 0, 0, 0);
 	}
-	/* Vertical arms */
 	for (int y = cy - arm; y <= cy + arm; y++) {
 		if (y >= cy - gap && y <= cy + gap) continue;
 		set_pixel(rgb, img_w, img_h, cx, y, 255, 255, 255);
 		set_pixel(rgb, img_w, img_h, cx-1, y, 0, 0, 0);
 		set_pixel(rgb, img_w, img_h, cx+1, y, 0, 0, 0);
 	}
-	/* Center dot */
 	set_pixel(rgb, img_w, img_h, cx, cy, 255, 255, 255);
 }
 
-static void draw_colorbar(uint8_t *rgb, int ow, int w, int h,
-			   uint16_t raw_min, uint16_t raw_max)
+static void draw_colorbar_labels(uint8_t *rgb, int ow, int w, int h,
+				 const struct flir_overlay_opts *opts)
 {
 	int grad_top = MARGIN_Y;
 	int grad_bot = h - MARGIN_Y;
@@ -152,17 +204,17 @@ static void draw_colorbar(uint8_t *rgb, int ow, int w, int h,
 
 	/* Labels */
 	int text_x = w + GRAD_X + GRAD_W + 6;
-	uint16_t raw_mid = (raw_min + raw_max) / 2;
-	char label[16];
+	uint16_t raw_mid = (opts->raw_min + opts->raw_max) / 2;
+	char label[24];
 
-	snprintf(label, sizeof(label), "%u", raw_max);
+	fmt_value(label, sizeof(label), opts->raw_max, opts);
 	draw_text(rgb, ow, h, text_x, grad_top, label, 255, 255, 255);
 
-	snprintf(label, sizeof(label), "%u", raw_mid);
+	fmt_value(label, sizeof(label), raw_mid, opts);
 	draw_text(rgb, ow, h, text_x, (grad_top + grad_bot) / 2 - CHAR_H / 2,
 		  label, 200, 200, 200);
 
-	snprintf(label, sizeof(label), "%u", raw_min);
+	fmt_value(label, sizeof(label), opts->raw_min, opts);
 	draw_text(rgb, ow, h, text_x, grad_bot - CHAR_H, label, 255, 255, 255);
 
 	/* Tick marks */
@@ -184,7 +236,8 @@ int flir_colorbar(const uint8_t *src_rgb, int w, int h,
 		memset(dst_rgb + (y * ow + w) * 3, 0, BAR_W * 3);
 	}
 
-	draw_colorbar(dst_rgb, ow, w, h, raw_min, raw_max);
+	struct flir_overlay_opts opts = { .raw_min = raw_min, .raw_max = raw_max };
+	draw_colorbar_labels(dst_rgb, ow, w, h, &opts);
 	return 0;
 }
 
@@ -201,8 +254,8 @@ int flir_overlay(const uint8_t *src_rgb, const uint16_t *raw,
 		memset(dst_rgb + (y * ow + w) * 3, 0, BAR_W * 3);
 	}
 
-	/* Color bar */
-	draw_colorbar(dst_rgb, ow, w, h, opts->raw_min, opts->raw_max);
+	/* Color bar with labels */
+	draw_colorbar_labels(dst_rgb, ow, w, h, opts);
 
 	/* Center crosshair */
 	int cx = w / 2, cy = h / 2;
@@ -220,33 +273,44 @@ int flir_overlay(const uint8_t *src_rgb, const uint16_t *raw,
 		}
 	uint16_t center_val = cnt ? (uint16_t)(sum / cnt) : 0;
 
-	/* Draw center value label with background box */
+	/* Center value label */
 	char label[24];
-	snprintf(label, sizeof(label), "%u", center_val);
+	fmt_value(label, sizeof(label), center_val, opts);
 	int lx = cx + 24, ly = cy - 20;
-	int label_len = (int)strlen(label);
-	int box_w = label_len * CHAR_W + 6;
-	int box_h = CHAR_H + 6;
-	/* Dark background */
-	for (int by = ly - 2; by < ly + box_h - 2; by++)
-		for (int bx = lx - 3; bx < lx + box_w - 3; bx++)
-			set_pixel(dst_rgb, ow, h, bx, by, 0, 0, 0);
+	int ll = (int)strlen(label);
+	draw_box(dst_rgb, ow, h, lx - 3, ly - 2, ll * CHAR_W + 6, CHAR_H + 4, 0, 0, 0);
 	draw_text(dst_rgb, ow, h, lx, ly, label, 255, 255, 255);
 
 	/* FPA temperature (top-left corner) */
 	if (opts->fpa_temp_cx10 != 0) {
-		int t = opts->fpa_temp_cx10;
+		float fpa_c = opts->fpa_temp_cx10 / 10.0f;
+		float fpa_display = celsius_to_unit(fpa_c, opts->temp_unit);
 		char fpa[24];
-		snprintf(fpa, sizeof(fpa), "FPA %d.%d^C", t / 10, t < 0 ? -(t % 10) : t % 10);
-		/* Background box */
+		if (opts->temp_unit == FLIR_UNIT_K)
+			snprintf(fpa, sizeof(fpa), "FPA %.1fK", fpa_display);
+		else
+			snprintf(fpa, sizeof(fpa), "FPA %.1f%s",
+				 fpa_display, unit_suffix(opts->temp_unit));
 		int fl = (int)strlen(fpa);
-		for (int by = 4; by < 4 + CHAR_H + 4; by++)
-			for (int bx = 4; bx < 4 + fl * CHAR_W + 4; bx++)
-				set_pixel(dst_rgb, ow, h, bx, by, 0, 0, 0);
+		draw_box(dst_rgb, ow, h, 4, 4, fl * CHAR_W + 4, CHAR_H + 4, 0, 0, 0);
 		draw_text(dst_rgb, ow, h, 6, 6, fpa, 220, 220, 220);
 	}
 
-	/* Spot meter box outline (center ROI) */
+	/* Unit indicator (top-right of image area) */
+	if (has_temp_cal(opts)) {
+		const char *uname;
+		switch (opts->temp_unit) {
+		case FLIR_UNIT_F: uname = "^F"; break;
+		case FLIR_UNIT_K: uname = "K";  break;
+		default:          uname = "^C"; break;
+		}
+		int ul = (int)strlen(uname);
+		int ux = w - ul * CHAR_W - 8;
+		draw_box(dst_rgb, ow, h, ux - 2, 4, ul * CHAR_W + 4, CHAR_H + 4, 0, 0, 0);
+		draw_text(dst_rgb, ow, h, ux, 6, uname, 255, 255, 0);
+	}
+
+	/* Spot meter box outline */
 	if (opts->spot_enabled) {
 		int sr = opts->spot_row_start, er = opts->spot_row_end;
 		int sc = opts->spot_col_start, ec = opts->spot_col_end;
@@ -261,13 +325,12 @@ int flir_overlay(const uint8_t *src_rgb, const uint16_t *raw,
 
 		/* Spot meter mean value below the box */
 		char spot[24];
-		snprintf(spot, sizeof(spot), "ROI %u", opts->spot_mean);
+		fmt_value(spot, sizeof(spot), opts->spot_mean, opts);
 		int sl = (int)strlen(spot);
 		int spot_x = (sc + ec) / 2 - sl * CHAR_W / 2;
 		int spot_y = er + 4;
-		for (int by = spot_y - 1; by < spot_y + CHAR_H + 1; by++)
-			for (int bx = spot_x - 2; bx < spot_x + sl * CHAR_W + 2; bx++)
-				set_pixel(dst_rgb, ow, h, bx, by, 0, 0, 0);
+		draw_box(dst_rgb, ow, h, spot_x - 2, spot_y - 1,
+			 sl * CHAR_W + 4, CHAR_H + 2, 0, 0, 0);
 		draw_text(dst_rgb, ow, h, spot_x, spot_y, spot, 255, 255, 0);
 	}
 

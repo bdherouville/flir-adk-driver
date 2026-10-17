@@ -148,6 +148,13 @@ int flir_sw_spotmeter(const uint16_t *raw, int w, int h,
  */
 #define FLIR_COLORBAR_WIDTH 100
 
+enum flir_temp_unit {
+	FLIR_UNIT_RAW = 0,  /* raw counts (default) */
+	FLIR_UNIT_C   = 1,  /* Celsius */
+	FLIR_UNIT_F   = 2,  /* Fahrenheit */
+	FLIR_UNIT_K   = 3,  /* Kelvin */
+};
+
 int flir_colorbar(const uint8_t *src_rgb, int w, int h,
 		  uint16_t raw_min, uint16_t raw_max,
 		  uint8_t *dst_rgb);
@@ -159,6 +166,11 @@ struct flir_overlay_opts {
 	uint16_t spot_row_start, spot_row_end;
 	uint16_t spot_col_start, spot_col_end;
 	uint16_t spot_mean;
+	/* Temperature display: set temp_unit != RAW + provide calibration */
+	enum flir_temp_unit temp_unit;
+	float    counts_per_deg;    /* raw counts per °C (e.g. 40.0) */
+	float    ref_temp_c;        /* reference temp in °C (e.g. FPA temp) */
+	uint16_t ref_raw;           /* raw count at ref_temp_c */
 };
 
 int flir_overlay(const uint8_t *src_rgb, const uint16_t *raw,
