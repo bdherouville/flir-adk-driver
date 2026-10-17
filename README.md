@@ -122,4 +122,6 @@ Non-radiometric units return status `0x0161` for radiometry/spotmeter/TLinear/AG
 
 ## License
 
-Proprietary. Camera protocol details from Boson+ SDK IDD Rev410 (Teledyne FLIR).
+GPLv2. See [LICENSE](LICENSE).
+
+CCI command IDs and FSLP frame layout derived from the Boson+ SDK IDD Rev410 (Teledyne FLIR). All code is an original implementation.
