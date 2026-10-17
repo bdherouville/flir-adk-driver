@@ -1,0 +1,14 @@
+.claude/
+build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+*.o
+*.a
+flir_grab
+flir_calibrate
+cci_probe
+output/
+*.raw
+*.pgm
+*.ppm
