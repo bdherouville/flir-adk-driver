@@ -45,15 +45,19 @@ static void write_ppm(const char *path, const uint8_t *rgb, int w, int h)
 	fclose(f);
 }
 
-static void write_raw16_pgm(const char *path, const uint16_t *raw, int w, int h)
+static void write_raw16_pgm(const char *path, const uint16_t *raw, int w, int h,
+			    uint16_t lo, uint16_t hi)
 {
 	FILE *f = fopen(path, "wb");
 	if (!f) { perror(path); return; }
-	fprintf(f, "P5\n%d %d\n65535\n", w, h);
-	/* PGM 16-bit is big-endian */
+	int range = hi > lo ? hi - lo : 1;
+	fprintf(f, "P5\n%d %d\n255\n", w, h);
 	for (int i = 0; i < w * h; i++) {
-		uint8_t be[2] = { raw[i] >> 8, raw[i] & 0xFF };
-		fwrite(be, 1, 2, f);
+		int v = (int)(raw[i] - lo) * 255 / range;
+		if (v < 0) v = 0;
+		if (v > 255) v = 255;
+		uint8_t b = (uint8_t)v;
+		fwrite(&b, 1, 1, f);
 	}
 	fclose(f);
 }
@@ -265,7 +269,7 @@ int main(int argc, char **argv)
 		/* Write outputs */
 		char path[256];
 		snprintf(path, sizeof(path), "%s/raw16_%03d.pgm", outdir, got);
-		write_raw16_pgm(path, raw, W, H);
+		write_raw16_pgm(path, raw, W, H, lo, hi);
 
 		snprintf(path, sizeof(path), "%s/heq_%03d.pgm", outdir, got);
 		write_pgm(path, gray_buf, W, H);
