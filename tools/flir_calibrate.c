@@ -98,6 +98,8 @@ static void temporal_noise(const uint16_t *f0, const uint16_t *f1, int n,
 	*out_mean = mean; *out_std = sqrt(var / n); *out_max = mx;
 }
 
+static int16_t fpa_temp_cx10;
+
 static void cci_report(struct flir_ctx *ctx)
 {
 	printf("\n--- CCI Report ---\n");
@@ -116,9 +118,10 @@ static void cci_report(struct flir_ctx *ctx)
 		printf("  Part number: %s\n", pn);
 
 	float temp;
-	if (flir_cci_get_fpa_temp(ctx, &temp) == 0)
+	if (flir_cci_get_fpa_temp(ctx, &temp) == 0) {
 		printf("  FPA temperature: %.1f C\n", temp);
-	else
+		fpa_temp_cx10 = (int16_t)(temp * 10);
+	} else
 		printf("  FPA temperature: [read failed]\n");
 
 	/* Try hardware spot meter (radiometric cameras only) */
@@ -197,6 +200,8 @@ int main(int argc, char **argv)
 	size_t expected = (size_t)W * H * 2;
 	uint8_t *gray_buf = malloc(W * H);
 	uint8_t *rgb_buf = malloc(W * H * 3);
+	int bar_w = W + FLIR_COLORBAR_WIDTH;
+	uint8_t *bar_buf = malloc(bar_w * H * 3);
 	uint16_t *prev_frame = malloc(W * H * 2);
 	int got = 0;
 	double noise_sum = 0;
@@ -258,10 +263,19 @@ int main(int argc, char **argv)
 		snprintf(path, sizeof(path), "%s/heq_%03d.pgm", outdir, got);
 		write_pgm(path, gray_buf, W, H);
 
-		/* Run colorizer */
+		/* Run colorizer + full overlay */
 		flir_accel_generic.colorize(gray_buf, rgb_buf, W, H, 0, NULL);
+		struct flir_overlay_opts ov = {
+			.raw_min = lo, .raw_max = hi,
+			.fpa_temp_cx10 = fpa_temp_cx10,
+			.spot_enabled = 1,
+			.spot_row_start = 206, .spot_row_end = 306,
+			.spot_col_start = 220, .spot_col_end = 420,
+			.spot_mean = (uint16_t)spot.mean,
+		};
+		flir_overlay(rgb_buf, raw, W, H, &ov, bar_buf);
 		snprintf(path, sizeof(path), "%s/iron_%03d.ppm", outdir, got);
-		write_ppm(path, rgb_buf, W, H);
+		write_ppm(path, bar_buf, bar_w, H);
 
 		got++;
 	}
@@ -278,6 +292,7 @@ int main(int argc, char **argv)
 
 	free(gray_buf);
 	free(rgb_buf);
+	free(bar_buf);
 	free(prev_frame);
 	flir_close(ctx);
 	return 0;

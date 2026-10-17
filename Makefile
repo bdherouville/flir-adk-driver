@@ -2,7 +2,7 @@ CC      ?= gcc
 CFLAGS  ?= -Wall -Wextra -Wpedantic -std=c11 -O2
 LDFLAGS ?=
 
-SRCS    = src/capture.c src/cci.c src/spotmeter.c
+SRCS    = src/capture.c src/cci.c src/spotmeter.c src/colorbar.c
 OBJS    = $(SRCS:.c=.o)
 LIB     = libflir_adk.a
 

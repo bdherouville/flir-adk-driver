@@ -142,6 +142,29 @@ int flir_sw_spotmeter(const uint16_t *raw, int w, int h,
 		      uint16_t col_start, uint16_t col_end,
 		      struct flir_spot_result *out);
 
+/*
+ * Thermal image overlay — color bar, crosshair, spot meter, FPA temp.
+ * dst_rgb must be (w + FLIR_COLORBAR_WIDTH) * h * 3 bytes.
+ */
+#define FLIR_COLORBAR_WIDTH 100
+
+int flir_colorbar(const uint8_t *src_rgb, int w, int h,
+		  uint16_t raw_min, uint16_t raw_max,
+		  uint8_t *dst_rgb);
+
+struct flir_overlay_opts {
+	uint16_t raw_min, raw_max;
+	int16_t  fpa_temp_cx10;     /* FPA temp in °C×10, 0 = don't show */
+	int      spot_enabled;
+	uint16_t spot_row_start, spot_row_end;
+	uint16_t spot_col_start, spot_col_end;
+	uint16_t spot_mean;
+};
+
+int flir_overlay(const uint8_t *src_rgb, const uint16_t *raw,
+		 int w, int h, const struct flir_overlay_opts *opts,
+		 uint8_t *dst_rgb);
+
 /* Raw CCI command for anything not wrapped above */
 int flir_cci_raw(struct flir_ctx *ctx, uint32_t cmd_id,
 		 const void *payload, size_t payload_len,
