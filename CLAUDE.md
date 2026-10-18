@@ -37,6 +37,9 @@ No external dependencies beyond libc, libm, and Linux kernel headers (V4L2, term
 # Full calibration test (HEQ AGC + SW spot meter + iron-bow colorizer + CCI report)
 ./flir_calibrate -d /dev/video5 -c /dev/ttyACM0 -n 10 -o output
 
+# With temperature display in Celsius (also accepts F or K)
+./flir_calibrate -d /dev/video5 -c /dev/ttyACM0 -n 10 -o output -u C
+
 # Python test (outputs PNGs directly)
 python3 tools/flir_test.py -d /dev/video5 -c /dev/ttyACM0 -n 5 -o output
 ```
@@ -50,10 +53,11 @@ The camera appears as two V4L2 devices: the lower-numbered one is video capture,
 - `src/capture.c` — V4L2 MMAP streaming (open/close/start/stop/grab)
 - `src/cci.c` — FSLP serial protocol + CCI command wrappers (IDs from Boson+ SDK IDD Rev410)
 - `src/spotmeter.c` — software spot meter (ROI stats from RAW16 frames, works on any camera variant)
+- `src/colorbar.c` — thermal OSD overlay (color bar, crosshair, spot meter box, FPA temp, temperature unit conversion). 5x7 bitmap font at 2x scale, zero deps
 - `platform/accel_generic.c` — HEQ AGC + iron-bow colorizer (pure C, no deps)
 - `platform/accel_cuda.c` / `accel_imx8.c` — per-SoC stubs
 - `tools/flir_grab.c` — CLI raw frame capture
-- `tools/flir_calibrate.c` — full calibration: CCI report + RAW16 capture + SW spot meter + HEQ + colorize + stats
+- `tools/flir_calibrate.c` — full calibration: CCI report + RAW16 capture + SW spot meter + HEQ + colorize + OSD overlay + stats. `-u C|F|K` for temperature unit display
 - `tools/cci_probe.c` — CCI capability probe (discovers which modules camera supports)
 - `tools/flir_test.py` — Python capture + PNG output (requires Pillow, ffmpeg)
 
@@ -105,6 +109,15 @@ Two approaches:
 | aarch64 | Jetson Orin | CUDA/NPP (stub) | GPU-accelerated AGC |
 | aarch64 | NXP i.MX8 | Vivante/OpenCL (stub) | VPU + GPU |
 | mips | QCA9533 | generic (CPU) | OpenWrt, capture + stream only |
+
+## Temperature display (non-radiometric)
+
+Since this camera variant has no hardware radiometry, temperature values shown on the OSD are approximate. The conversion uses a linear model: `temp_C = ref_temp_c + (raw - ref_raw) / counts_per_deg`, where:
+- `ref_temp_c` = FPA temperature from CCI (the only real temperature reading)
+- `ref_raw` = frame mean raw count (assumed to correspond to FPA temp)
+- `counts_per_deg` = ~40 counts/°C (empirical estimate from observed raw range vs scene span)
+
+The `flir_overlay_opts` struct in `flir_adk.h` carries the calibration parameters. `flir_calibrate` auto-populates them from FPA temp and frame statistics.
 
 ## Key constraints
 
