@@ -95,6 +95,12 @@ static uint16_t crc16_ccitt(const uint8_t *data, size_t len)
 }
 
 static uint8_t fslp_seq_counter;
+static uint32_t cci_last_status = 0xFFFFFFFF;
+
+uint32_t flir_cci_last_status(void)
+{
+	return cci_last_status;
+}
 
 static void put32be(uint8_t *p, uint32_t v)
 {
@@ -262,6 +268,7 @@ int flir_cci_raw(struct flir_ctx *ctx, uint32_t cmd_id,
 		 void *resp, size_t *resp_len)
 {
 	int fd = ctx ? ctx->cfd : -1;
+	cci_last_status = 0xFFFFFFFF;
 	if (fd < 0) return -1;
 
 	uint8_t frame[1024];
@@ -272,15 +279,17 @@ int flir_cci_raw(struct flir_ctx *ctx, uint32_t cmd_id,
 		return -1;
 
 	if (resp && resp_len) {
-		uint32_t status;
+		uint32_t status = 0xFFFFFFFF;
 		int n = fslp_read_response(fd, resp, *resp_len, &status, 2000);
+		cci_last_status = status;
 		if (n < 0) return -1;
 		*resp_len = n;
 	} else {
 		/* SET commands: consume the response and check status */
 		uint8_t discard[64];
-		uint32_t status;
+		uint32_t status = 0xFFFFFFFF;
 		int n = fslp_read_response(fd, discard, sizeof(discard), &status, 1000);
+		cci_last_status = status;
 		if (n < 0) return -1;
 	}
 	return 0;

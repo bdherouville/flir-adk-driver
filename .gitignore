@@ -12,3 +12,7 @@ output/
 *.raw
 *.pgm
 *.ppm
+flir_ctl
+flir_loop
+__pycache__/
+test_accel

@@ -39,6 +39,19 @@ struct flir_ctx *flir_open(const char *video_dev, const char *cci_dev,
 
 	ctx->mode = mode;
 	ctx->cfd = -1;
+	ctx->vfd = -1;
+
+	/* CCI-only: no V4L2 access, so it works while another process streams */
+	if (!video_dev) {
+		if (cci_dev)
+			ctx->cfd = open(cci_dev, O_RDWR | O_NOCTTY);
+		if (ctx->cfd < 0) {
+			free(ctx);
+			return NULL;
+		}
+		flir_cci_init_serial(ctx->cfd);
+		return ctx;
+	}
 
 	ctx->vfd = open(video_dev, O_RDWR);
 	if (ctx->vfd < 0) {
@@ -122,7 +135,8 @@ void flir_close(struct flir_ctx *ctx)
 		flir_stream_stop(ctx);
 	for (int i = 0; i < ctx->n_bufs; i++)
 		munmap(ctx->bufs[i].start, ctx->bufs[i].length);
-	close(ctx->vfd);
+	if (ctx->vfd >= 0)
+		close(ctx->vfd);
 	if (ctx->cfd >= 0)
 		close(ctx->cfd);
 	free(ctx);

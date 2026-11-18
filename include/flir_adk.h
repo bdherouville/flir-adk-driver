@@ -65,6 +65,10 @@ struct flir_ctx;
 
 /*
  * Lifecycle
+ *
+ * video_dev may be NULL for CCI-only access: the V4L2 node is not touched
+ * (so this works while another process streams), streaming/grab calls fail,
+ * and flir_open() returns NULL if cci_dev is NULL or cannot be opened.
  */
 struct flir_ctx *flir_open(const char *video_dev, const char *cci_dev,
 			   enum flir_video_mode mode);
@@ -155,6 +159,15 @@ enum flir_temp_unit {
 	FLIR_UNIT_K   = 3,  /* Kelvin */
 };
 
+/*
+ * Default two-point calibration (this unit, high gain, measured 2026-11-18):
+ * ceiling @ 21°C = 22383 counts, skin @ ~34°C = 23313 counts, FPA 37.9°C.
+ *   temp_C = fpa_C + (raw - FLIR_CAL_RAW_AT_FPA) / FLIR_CAL_COUNTS_PER_DEG
+ * Assumes the post-FFC offset tracks FPA temp. Re-measure per unit / gain mode.
+ */
+#define FLIR_CAL_COUNTS_PER_DEG 71.5f
+#define FLIR_CAL_RAW_AT_FPA     23592
+
 int flir_colorbar(const uint8_t *src_rgb, int w, int h,
 		  uint16_t raw_min, uint16_t raw_max,
 		  uint8_t *dst_rgb);
@@ -168,14 +181,42 @@ struct flir_overlay_opts {
 	uint16_t spot_mean;
 	/* Temperature display: set temp_unit != RAW + provide calibration */
 	enum flir_temp_unit temp_unit;
-	float    counts_per_deg;    /* raw counts per °C (e.g. 40.0) */
+	float    counts_per_deg;    /* raw counts per °C (FLIR_CAL_COUNTS_PER_DEG) */
 	float    ref_temp_c;        /* reference temp in °C (e.g. FPA temp) */
-	uint16_t ref_raw;           /* raw count at ref_temp_c */
+	uint16_t ref_raw;           /* raw count at ref_temp_c (FLIR_CAL_RAW_AT_FPA) */
+	const uint8_t (*palette)[3];  /* color bar LUT, 256 entries; NULL = iron-bow */
+	const uint16_t *gray_to_raw;  /* 256 entries from flir_gray_to_raw(); NULL = linear min..max labels */
 };
+
+/*
+ * Map each gray level of an AGC'd frame back to the raw count it represents,
+ * so color bar labels stay correct for non-linear AGC (HEQ). Endpoints are the
+ * AGC clip boundaries, so outlier pixels don't stretch the labels.
+ */
+void flir_gray_to_raw(const uint16_t *raw, const uint8_t *gray, int n,
+		      uint16_t out[256]);
+
+/*
+ * Motion-adaptive temporal denoise on RAW16. Static pixels are averaged over
+ * frames (measured: static-area noise 3.3 -> 1.8 counts); a pixel that changes by more than `thresh` counts
+ * jumps straight to the new value, so movement doesn't smear.
+ * acc: caller-owned n-entry buffer. reset=1 on the first frame.
+ */
+void flir_denoise(const uint16_t *in, uint16_t *out, int32_t *acc, int n,
+		  int thresh, int reset);
 
 int flir_overlay(const uint8_t *src_rgb, const uint16_t *raw,
 		 int w, int h, const struct flir_overlay_opts *opts,
 		 uint8_t *dst_rgb);
+
+/*
+ * Status of the most recent flir_cci_raw() call (every flir_cci_* wrapper
+ * goes through it). 0 = OK; 0xFFFFFFFF = no valid response (device not
+ * open, write/read error, timeout, bad CRC); any other value is the camera's
+ * FLR_RESULT code, e.g. 0x00000161 = module not available on this variant.
+ * Process-global, not thread-safe.
+ */
+uint32_t flir_cci_last_status(void);
 
 /* Raw CCI command for anything not wrapped above */
 int flir_cci_raw(struct flir_ctx *ctx, uint32_t cmd_id,

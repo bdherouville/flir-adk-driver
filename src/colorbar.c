@@ -187,7 +187,13 @@ static void draw_colorbar_labels(uint8_t *rgb, int ow, int w, int h,
 	for (int y = grad_top; y < grad_bot; y++) {
 		int idx = 255 - (y - grad_top) * 255 / (grad_h - 1);
 		uint8_t r, g, b;
-		ironbow_rgb(idx, &r, &g, &b);
+		if (opts->palette) {
+			r = opts->palette[idx][0];
+			g = opts->palette[idx][1];
+			b = opts->palette[idx][2];
+		} else {
+			ironbow_rgb(idx, &r, &g, &b);
+		}
 		for (int x = w + GRAD_X; x < w + GRAD_X + GRAD_W; x++)
 			set_pixel(rgb, ow, h, x, y, r, g, b);
 	}
@@ -202,26 +208,56 @@ static void draw_colorbar_labels(uint8_t *rgb, int ow, int w, int h,
 		set_pixel(rgb, ow, h, w + GRAD_X + GRAD_W, y, 180, 180, 180);
 	}
 
-	/* Labels */
+	/* Labels at 5 evenly spaced bar positions; value = raw count at that color */
 	int text_x = w + GRAD_X + GRAD_W + 6;
-	uint16_t raw_mid = (opts->raw_min + opts->raw_max) / 2;
 	char label[24];
-
-	fmt_value(label, sizeof(label), opts->raw_max, opts);
-	draw_text(rgb, ow, h, text_x, grad_top, label, 255, 255, 255);
-
-	fmt_value(label, sizeof(label), raw_mid, opts);
-	draw_text(rgb, ow, h, text_x, (grad_top + grad_bot) / 2 - CHAR_H / 2,
-		  label, 200, 200, 200);
-
-	fmt_value(label, sizeof(label), opts->raw_min, opts);
-	draw_text(rgb, ow, h, text_x, grad_bot - CHAR_H, label, 255, 255, 255);
-
-	/* Tick marks */
-	int ticks[3] = { grad_top, (grad_top + grad_bot) / 2, grad_bot - 1 };
-	for (int t = 0; t < 3; t++)
+	for (int k = 0; k <= 4; k++) {
+		int idx = 255 - k * 255 / 4;
+		int y = grad_top + k * (grad_h - 1) / 4;
+		uint16_t v = opts->gray_to_raw ? opts->gray_to_raw[idx] :
+			(uint16_t)(opts->raw_min + (opts->raw_max - opts->raw_min) * idx / 255);
+		int ty = y - CHAR_H / 2;
+		if (ty < grad_top) ty = grad_top;
+		if (ty > grad_bot - CHAR_H) ty = grad_bot - CHAR_H;
+		fmt_value(label, sizeof(label), v, opts);
+		uint8_t c = (k == 0 || k == 4) ? 255 : 200;
+		draw_text(rgb, ow, h, text_x, ty, label, c, c, c);
 		for (int x = w + GRAD_X + GRAD_W + 1; x < text_x - 1; x++)
-			set_pixel(rgb, ow, h, x, ticks[t], 180, 180, 180);
+			set_pixel(rgb, ow, h, x, y, 180, 180, 180);
+	}
+}
+
+void flir_gray_to_raw(const uint16_t *raw, const uint8_t *gray, int n,
+		      uint16_t out[256])
+{
+	uint16_t lo[256], hi[256];
+	for (int g = 0; g < 256; g++) { lo[g] = 0xFFFF; hi[g] = 0; }
+	for (int i = 0; i < n; i++) {
+		uint8_t g = gray[i];
+		if (raw[i] < lo[g]) lo[g] = raw[i];
+		if (raw[i] > hi[g]) hi[g] = raw[i];
+	}
+	/* Level 0 / 255 collect the clipped tails: use their inner edge */
+	int have[256];
+	for (int g = 0; g < 256; g++) {
+		have[g] = hi[g] >= lo[g];
+		out[g] = g == 0 ? hi[g] : g == 255 ? lo[g] : (uint16_t)((lo[g] + hi[g]) / 2);
+	}
+	/* Fill unused levels by linear interpolation between used neighbours */
+	int prev = -1;
+	for (int g = 0; g < 256; g++) {
+		if (!have[g]) continue;
+		if (prev < 0)
+			for (int j = 0; j < g; j++) out[j] = out[g];
+		else
+			for (int j = prev + 1; j < g; j++)
+				out[j] = (uint16_t)(out[prev] + (out[g] - out[prev]) * (j - prev) / (g - prev));
+		prev = g;
+	}
+	for (int j = prev + 1; j < 256; j++)
+		out[j] = prev >= 0 ? out[prev] : 0;
+	for (int g = 1; g < 256; g++)   /* keep monotonic */
+		if (out[g] < out[g - 1]) out[g] = out[g - 1];
 }
 
 int flir_colorbar(const uint8_t *src_rgb, int w, int h,

@@ -8,76 +8,65 @@
 #include <string.h>
 
 /*
- * Histogram-equalization AGC for RAW16 thermal data.
+ * Plateau histogram-equalization AGC for RAW16 thermal data.
  *
- * Better than linear stretch — spreads contrast across the actual
- * distribution of pixel values rather than just min/max.
- * Clips top/bottom 0.5% to reject hot/dead pixels.
+ * - Full 16-bit range (Boson Y16 values sit around 20000+, not 14-bit).
+ * - Clips top/bottom 0.5% to reject hot/dead pixels.
+ * - Plateau: caps each histogram bin at PLATEAU x the mean bin height, so large
+ *   flat areas (walls, ceiling) don't eat the gray range and amplify noise.
+ * - Temporal: the histogram is IIR-smoothed across frames to stop flicker.
+ *   Tune SMOOTH (0 = no memory, ->1 = slow) and PLATEAU to taste.
  */
+#define HIST_BINS 65536
+#define PLATEAU   4.0f
+#define SMOOTH    0.8f
+
 static int heq_agc(const uint16_t *raw, uint8_t *out, int w, int h, void *priv)
 {
 	(void)priv;
 	int n = w * h;
-
-	/* Build histogram over 14-bit range (Boson uses 14 bits in 16-bit container) */
-	#define HIST_BINS 16384
-	static uint32_t hist[HIST_BINS]; /* ponytail: static to avoid 64KB stack alloc */
+	/* ponytail: static state, one camera per process; move to priv for multi-cam */
+	static uint32_t hist[HIST_BINS];
+	static float smooth[HIST_BINS];
+	static uint8_t lut[HIST_BINS];
+	static int have_prev;
 	memset(hist, 0, sizeof(hist));
 
-	uint16_t lo = 0xFFFF, hi = 0;
-	for (int i = 0; i < n; i++) {
-		uint16_t v = raw[i] & 0x3FFF; /* mask to 14 bits */
-		hist[v]++;
-		if (raw[i] < lo) lo = raw[i];
-		if (raw[i] > hi) hi = raw[i];
-	}
-	if (hi == lo) {
+	for (int i = 0; i < n; i++)
+		hist[raw[i]]++;
+
+	/* 0.5% tails */
+	int clip = n / 200, acc = 0, lo = 0, hi = HIST_BINS - 1;
+	while (lo < HIST_BINS - 1 && (acc += hist[lo]) <= clip) lo++;
+	acc = 0;
+	while (hi > lo && (acc += hist[hi]) <= clip) hi--;
+	if (hi <= lo) {
 		memset(out, 128, n);
 		return 0;
 	}
 
-	/* Clip top/bottom 0.5% for dead/hot pixel rejection */
-	int clip = n / 200;
-	uint16_t clip_lo = 0, clip_hi = HIST_BINS - 1;
-	int acc = 0;
-	for (int i = 0; i < HIST_BINS && acc < clip; i++) {
-		acc += hist[i];
-		clip_lo = i;
-	}
-	acc = 0;
-	for (int i = HIST_BINS - 1; i >= 0 && acc < clip; i--) {
-		acc += hist[i];
-		clip_hi = i;
-	}
-	if (clip_hi <= clip_lo) {
-		clip_lo = lo & 0x3FFF;
-		clip_hi = hi & 0x3FFF;
-	}
-
-	/* Build CDF (cumulative distribution function) as a 14-bit → 8-bit LUT */
-	static uint8_t cdf_lut[HIST_BINS];
-	uint32_t cdf = 0;
-	uint32_t range_pixels = 0;
-	for (int i = clip_lo; i <= clip_hi; i++)
-		range_pixels += hist[i];
-	if (range_pixels == 0) range_pixels = 1;
-
+	/* Plateau-clip, then blend into the running histogram */
+	float cap = PLATEAU * (float)n / (float)(hi - lo + 1);
+	float a = have_prev ? SMOOTH : 0.0f;
 	for (int i = 0; i < HIST_BINS; i++) {
-		if (i < clip_lo) {
-			cdf_lut[i] = 0;
-		} else if (i > clip_hi) {
-			cdf_lut[i] = 255;
-		} else {
-			cdf += hist[i];
-			cdf_lut[i] = (uint8_t)((uint64_t)cdf * 255 / range_pixels);
-		}
+		float v = (i < lo || i > hi) ? 0.0f : (hist[i] > cap ? cap : (float)hist[i]);
+		smooth[i] = a * smooth[i] + (1.0f - a) * v;
+	}
+	have_prev = 1;
+
+	/* CDF over the smoothed histogram (its support may be wider than [lo,hi]) */
+	double total = 0;
+	for (int i = 0; i < HIST_BINS; i++)
+		total += smooth[i];
+	double cdf = 0;
+	for (int i = 0; i < HIST_BINS; i++) {
+		cdf += smooth[i];
+		lut[i] = (uint8_t)(cdf * 255.0 / total + 0.5);
 	}
 
 	for (int i = 0; i < n; i++)
-		out[i] = cdf_lut[raw[i] & 0x3FFF];
-
+		out[i] = lut[raw[i]];
 	return 0;
-	#undef HIST_BINS
 }
 
 /*

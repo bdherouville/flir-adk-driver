@@ -284,10 +284,13 @@ int main(int argc, char **argv)
 			.spot_col_start = 220, .spot_col_end = 420,
 			.spot_mean = (uint16_t)spot.mean,
 			.temp_unit = temp_unit,
-			.counts_per_deg = 40.0f,
+			.counts_per_deg = FLIR_CAL_COUNTS_PER_DEG,
 			.ref_temp_c = fpa_temp_cx10 / 10.0f,
-			.ref_raw = (uint16_t)mean,
+			.ref_raw = FLIR_CAL_RAW_AT_FPA,
 		};
+		uint16_t g2r[256];
+		flir_gray_to_raw(raw, gray_buf, W * H, g2r);
+		ov.gray_to_raw = g2r;
 		flir_overlay(rgb_buf, raw, W, H, &ov, bar_buf);
 		snprintf(path, sizeof(path), "%s/iron_%03d.ppm", outdir, got);
 		write_ppm(path, bar_buf, bar_w, H);

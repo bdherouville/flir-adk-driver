@@ -18,7 +18,8 @@ Portable C driver for the FLIR ADK 75° thermal camera (Boson 640 core, P/N 2064
 ## Build
 
 ```
-make                    # builds libflir_adk.a + flir_grab + flir_calibrate + cci_probe
+make                    # builds libflir_adk.a + flir_grab + flir_calibrate + cci_probe + flir_ctl + flir_loop
+make test               # AGC / color bar labels / denoise self-check
 make CC=aarch64-linux-gnu-gcc   # cross-compile for ARM64
 make clean
 ```
@@ -60,6 +61,13 @@ The camera appears as two V4L2 devices: the lower-numbered one is video capture,
 - `tools/flir_calibrate.c` — full calibration: CCI report + RAW16 capture + SW spot meter + HEQ + colorize + OSD overlay + stats. `-u C|F|K` for temperature unit display
 - `tools/cci_probe.c` — CCI capability probe (discovers which modules camera supports)
 - `tools/flir_test.py` — Python capture + PNG output (requires Pillow, ffmpeg)
+- `src/denoise.c` — motion-adaptive temporal denoise on RAW16
+- `tools/flir_ctl.c` — one CCI command per run, one JSON line out (`flir_ctl gain 2`, `ffc`, `fpa`…). Uses CCI-only `flir_open(NULL, cci, …)` so it works while another process streams
+- `tools/flir_web.py` — stdlib web control panel (127.0.0.1:8080) wrapping flir_ctl
+- `tools/flir_loop.c` — RAW16 → denoise → HEQ → palette → OSD → YUYV 740x512 into a v4l2loopback device for VLC/OBS. Live settings via control file `/tmp/flir_loop.ctl` (`lut=4 unit=C spot=1 nr=1`)
+- `tools/obs_flir.lua` / `tools/vlc_flir.lua` — OBS script / VLC extension: display settings → control file, FFC/gain → flir_ctl
+
+Virtual camera setup: `sudo v4l2loopback-ctl add -n "FLIR Thermal" -x 1 /dev/video10`, then `./flir_loop -d /dev/video3 -o /dev/video10 -c /dev/ttyACM0 -u C`, then `vlc v4l2:///dev/video10`. The Boson exposes no V4L2 controls, so all control goes through CCI.
 
 The `struct flir_accel` interface lets platform-specific code provide accelerated AGC and colorization.
 
@@ -112,12 +120,12 @@ Two approaches:
 
 ## Temperature display (non-radiometric)
 
-Since this camera variant has no hardware radiometry, temperature values shown on the OSD are approximate. The conversion uses a linear model: `temp_C = ref_temp_c + (raw - ref_raw) / counts_per_deg`, where:
-- `ref_temp_c` = FPA temperature from CCI (the only real temperature reading)
-- `ref_raw` = frame mean raw count (assumed to correspond to FPA temp)
-- `counts_per_deg` = ~40 counts/°C (empirical estimate from observed raw range vs scene span)
+Since this camera variant has no hardware radiometry, temperature values shown on the OSD are approximate. The conversion uses a linear model referenced to the FPA temperature: `temp_C = fpa_C + (raw - FLIR_CAL_RAW_AT_FPA) / FLIR_CAL_COUNTS_PER_DEG` (defaults in `flir_adk.h`, override in `flir_loop` with `-r` / `-s`).
 
-The `flir_overlay_opts` struct in `flir_adk.h` carries the calibration parameters. `flir_calibrate` auto-populates them from FPA temp and frame statistics.
+- Measured 2026-11-18 on this unit, high gain, two-point: ceiling @ 21°C = 22383 counts, skin @ ~34°C = 23313 counts → 71.5 counts/°C, raw at FPA (37.9°C) = 23592
+- Do NOT use the frame mean as reference: FPA temp (~38°C) is far above the scene, which made faces read ~57°C
+- Unverified: whether `RAW_AT_FPA` stays valid after warm-up / FFC. Re-measure with a known reference if readings drift
+- RAW16 values are full 16-bit (~22000), not 14-bit — never mask with 0x3FFF
 
 ## Key constraints
 
