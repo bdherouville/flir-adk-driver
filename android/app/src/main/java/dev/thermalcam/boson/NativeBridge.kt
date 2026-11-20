@@ -13,17 +13,20 @@ object NativeBridge {
         System.loadLibrary("bosonthermal")
     }
 
-    /** Start RAW16 streaming on the UsbDeviceConnection fd. 0 = ok, else a libuvc uvc_error_t (< 0). */
+    /** Start RAW16 streaming on the UsbDeviceConnection fd. Blocking (~0.5 s): call off the UI thread. 0 = ok, else a libusb error code (< 0). */
     @JvmStatic external fun nativeStart(fd: Int): Int
 
-    /** Stop streaming and release libuvc/libusb (the fd stays open, Java closes it). Safe to call twice. */
+    /** Stop streaming and release libusb (the fd stays open, Java closes it). Blocking; safe to call twice. */
     @JvmStatic external fun nativeStop()
 
     /** Output surface, or null when it is destroyed. */
     @JvmStatic external fun nativeSetSurface(surface: Surface?)
 
-    /** lut: 4 iron-bow, 0 white-hot, 1 black-hot. unit: 0 raw, 1 C, 2 F, 3 K. */
-    @JvmStatic external fun nativeSetSettings(lut: Int, unit: Int, spot: Boolean, nr: Boolean)
+    /**
+     * lut (enum flir_lut): 4 iron-bow, 0 white-hot, 1 black-hot, 2 rainbow, 5 lava, 6 arctic, 9 hot spot.
+     * unit: 0 raw, 1 C, 2 F, 3 K. minmax: hot/cold markers on the image.
+     */
+    @JvmStatic external fun nativeSetSettings(lut: Int, unit: Int, spot: Boolean, nr: Boolean, minmax: Boolean)
 
     /** Spot crosshair in sensor pixels (0..639, 0..511); reading is the 5x5 mean there. */
     @JvmStatic external fun nativeSetSpot(x: Int, y: Int)

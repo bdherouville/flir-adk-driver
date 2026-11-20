@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Record: red disc in a ring; activated (recording) = red stop square -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/ripple">
+    <item android:id="@android:id/mask">
+        <shape android:shape="oval"><solid android:color="#FFFFFFFF" /></shape>
+    </item>
+    <item>
+        <shape android:shape="oval">
+            <stroke android:width="4dp" android:color="@color/text_primary" />
+        </shape>
+    </item>
+    <item>
+        <selector>
+            <item android:state_activated="true">
+                <inset android:inset="24dp">
+                    <shape>
+                        <solid android:color="@color/rec" />
+                        <corners android:radius="@dimen/radius_s" />
+                    </shape>
+                </inset>
+            </item>
+            <item>
+                <inset android:inset="10dp">
+                    <shape android:shape="oval"><solid android:color="@color/rec" /></shape>
+                </inset>
+            </item>
+        </selector>
+    </item>
+</ripple>

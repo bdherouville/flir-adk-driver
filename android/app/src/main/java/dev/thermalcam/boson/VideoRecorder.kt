@@ -8,19 +8,26 @@ import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
 import java.io.File
 
+/** MediaRecorder size cap: 3.5 GB (MP4 on FAT/MediaStore), and 200 MB of storage left free. <= 0 = no room. */
+fun recordLimitBytes(freeBytes: Long): Long = minOf(3_500_000_000L, freeBytes - 200_000_000L)
+
 /**
  * Records what the app shows (image + color bar + overlay) to H.264 MP4, no audio.
  * Frames come from NativeBridge.nativeSnapshot and are drawn on MediaRecorder's input
  * surface with a hardware canvas (encoder surfaces need hardware rendering).
  * Saved to Movies/BosonThermal (MediaStore) on Android 10+, app Movies dir before.
+ * [onStopped] runs on the main thread when recording ends by itself (size/duration limit,
+ * encoder error, lost surface) with the reason; the caller should then call [stop].
  */
-class VideoRecorder(private val ctx: Context) {
+class VideoRecorder(private val ctx: Context, private val onStopped: (String) -> Unit) {
     companion object {
         private const val TAG = "VideoRecorder"
         const val WIDTH = 736   // 740 rounded down to a multiple of 16 for the encoder
@@ -34,7 +41,12 @@ class VideoRecorder(private val ctx: Context) {
     private var file: File? = null
     private var thread: Thread? = null
     @Volatile private var running = false
+    private var limitHit = false // the recorder finalized the file itself (max size / duration)
+    private val main = Handler(Looper.getMainLooper())
     var label: String = ""
+        private set
+    /** MediaStore Uri of the last saved video (Android 10+), null before or when discarded. */
+    var savedUri: Uri? = null
         private set
 
     val isRecording get() = recorder != null
@@ -42,6 +54,9 @@ class VideoRecorder(private val ctx: Context) {
     /** Starts recording. Throws on failure (nothing is left behind). */
     fun start() {
         val name = "boson_${System.currentTimeMillis()}.mp4"
+        val limit = recordLimitBytes(ctx.getExternalFilesDir(null)?.usableSpace ?: 0L) // same volume as Movies
+        if (limit <= 0) throw IllegalStateException(ctx.getString(R.string.err_storage_full))
+        limitHit = false
         try {
             val r = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(ctx) else @Suppress("DEPRECATION") MediaRecorder()
             recorder = r
@@ -51,6 +66,14 @@ class VideoRecorder(private val ctx: Context) {
             r.setVideoSize(WIDTH, HEIGHT)
             r.setVideoFrameRate(FPS)
             r.setVideoEncodingBitRate(6_000_000)
+            r.setMaxFileSize(limit)
+            r.setOnErrorListener { _, what, _ -> report(ctx.getString(R.string.rec_reason_error, what)) }
+            r.setOnInfoListener { _, what, _ ->
+                when (what) {
+                    MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED -> { limitHit = true; report(ctx.getString(R.string.rec_reason_max_size)) }
+                    MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED -> { limitHit = true; report(ctx.getString(R.string.rec_reason_max_duration)) }
+                }
+            }
             if (Build.VERSION.SDK_INT >= 29) {
                 val values = ContentValues().apply {
                     put(MediaStore.Video.Media.DISPLAY_NAME, name)
@@ -59,7 +82,7 @@ class VideoRecorder(private val ctx: Context) {
                     put(MediaStore.Video.Media.IS_PENDING, 1)
                 }
                 val u = ctx.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values)
-                    ?: throw IllegalStateException("MediaStore insert failed")
+                    ?: throw IllegalStateException(ctx.getString(R.string.err_mediastore))
                 uri = u
                 pfd = ctx.contentResolver.openFileDescriptor(u, "w")
                 r.setOutputFile(pfd!!.fileDescriptor)
@@ -93,8 +116,10 @@ class VideoRecorder(private val ctx: Context) {
                     val c = surface.lockHardwareCanvas()
                     c.drawBitmap(bmp, null, dst, null)
                     surface.unlockCanvasAndPost(c)
-                } catch (e: Exception) {
-                    Log.w(TAG, "frame dropped", e)
+                } catch (e: Throwable) { // surface abandoned (encoder died): no point retrying
+                    Log.w(TAG, "encoder surface lost", e)
+                    report(ctx.getString(R.string.rec_reason_surface))
+                    break
                 }
             }
             next += periodMs
@@ -104,19 +129,31 @@ class VideoRecorder(private val ctx: Context) {
         bmp.recycle()
     }
 
-    /** Stops and finalizes the file. Returns its label, or null if nothing usable was recorded. */
+    private fun report(reason: String) = main.post { if (recorder != null) onStopped(reason) }
+
+    /**
+     * Stops and finalizes the file. Returns its label, or null if nothing usable was recorded.
+     * Throws IllegalStateException when the frame thread hung (file deleted).
+     */
     fun stop(): String? {
         if (recorder == null) return null
         running = false
-        thread?.join(2000)
+        val t = thread
+        t?.join(2000)
         thread = null
+        if (t?.isAlive == true) { // stuck in the encoder: recorder.stop() would hang too
+            Log.e(TAG, "frame thread did not stop, deleting the file")
+            cleanup(keep = false)
+            throw IllegalStateException(ctx.getString(R.string.err_rec_stuck))
+        }
         val ok = try {
             recorder?.stop()
             true
-        } catch (e: RuntimeException) { // no frame was ever encoded
-            Log.w(TAG, "stop failed, discarding", e)
-            false
+        } catch (e: RuntimeException) { // no frame was ever encoded, or already stopped at a limit
+            Log.w(TAG, "stop failed" + if (limitHit) " after a limit, keeping" else ", discarding", e)
+            limitHit
         }
+        savedUri = if (ok) uri else null
         cleanup(keep = ok)
         return if (ok) label else null
     }

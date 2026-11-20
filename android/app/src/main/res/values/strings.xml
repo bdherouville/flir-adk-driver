@@ -1,4 +1,175 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Boson Thermal</string>
+    <string name="dash">—</string>
+
+    <!-- status strip -->
+    <string name="state_live">Live</string>
+    <string name="state_connecting">Connecting…</string>
+    <string name="state_no_camera">No camera</string>
+    <string name="state_control_offline">Control offline</string>
+    <string name="chip_warming">Warming up</string>
+    <string name="chip_gain_low">Low gain · raw counts</string>
+    <string name="chip_gain_auto">Auto gain</string>
+    <string name="chip_cal">Offset %1$+.1f °C</string>
+    <string name="rec_format">REC %s</string>
+    <string name="readout">FPA %1$s · Myriad %2$s</string>
+    <string name="temp_c">%.1f °C</string>
+
+    <!-- rail -->
+    <string name="rail_fullscreen">Full screen</string>
+    <string name="rail_ffc">FFC</string>
+    <string name="rail_calibrate">Calibrate</string>
+    <string name="rail_panel">Controls</string>
+
+    <!-- content descriptions -->
+    <string name="cd_image">Thermal image. Tap to move the spot meter, long-press to centre it, double-tap for full screen.</string>
+    <string name="cd_photo">Take photo</string>
+    <string name="cd_record_start">Start recording</string>
+    <string name="cd_record_stop">Stop recording</string>
+    <string name="cd_exit_fullscreen">Exit full screen</string>
+    <string name="cd_show_panel">Show controls</string>
+    <string name="cd_hide_panel">Hide controls</string>
+    <string name="a11y_center_spot">Centre spot meter</string>
+    <string name="a11y_toggle_fullscreen">Toggle full screen</string>
+
+    <!-- panel -->
+    <string name="section_display">DISPLAY</string>
+    <string name="section_camera">CAMERA</string>
+    <string name="section_filters">CAMERA FILTERS</string>
+    <string name="section_advanced">ADVANCED</string>
+    <string name="section_info">CAMERA INFO</string>
+    <string name="label_palette">Palette</string>
+    <string name="palette_iron">Iron</string>
+    <string name="palette_white">White hot</string>
+    <string name="palette_black">Black hot</string>
+    <string name="palette_rainbow">Rainbow</string>
+    <string name="palette_lava">Lava</string>
+    <string name="palette_arctic">Arctic</string>
+    <string name="palette_hotspot">Hot spot</string>
+    <string name="label_units">Units</string>
+    <string name="unit_c">°C</string>
+    <string name="unit_f">°F</string>
+    <string name="unit_k">K</string>
+    <string name="unit_raw">Raw</string>
+    <string name="switch_spot">Spot meter</string>
+    <string name="switch_spot_sub">Tap the image to move it, long-press to centre it</string>
+    <string name="switch_nr">Noise reduction</string>
+    <string name="switch_nr_sub">Temporal denoise in the app, on top of the camera filters</string>
+    <string name="minmax_markers">Hot/cold markers</string>
+    <string name="minmax_markers_sub">Red at the hottest pixel, blue at the coldest</string>
+    <string name="label_gain">Gain mode</string>
+    <string name="gain_high">High</string>
+    <string name="gain_low">Low</string>
+    <string name="gain_auto">Auto</string>
+    <string name="control_unavailable">Camera control unavailable</string>
+    <string name="gain_helper_auto">Hot scenes may switch to low gain and read wrong</string>
+    <string name="value_on">On</string>
+    <string name="value_off">Off</string>
+    <string name="gain_helper_low">Low gain shows raw counts: the temperature calibration is for high gain.</string>
+    <string name="label_ffc_mode">Flat-field correction</string>
+    <string name="ffc_auto">Auto</string>
+    <string name="ffc_manual">Manual</string>
+    <string name="switch_tf">Temporal filter (TF)</string>
+    <string name="switch_tf_sub">Smooths noise over frames</string>
+    <string name="switch_scnr">Column noise filter (SCNR)</string>
+    <string name="switch_scnr_sub">Removes vertical stripes</string>
+    <string name="switch_spnr">Spatial noise filter (SPNR)</string>
+    <string name="switch_spnr_sub">Smooths noise within a frame</string>
+    <string name="all_settings">All camera settings</string>
+    <string name="save_to_camera">Save settings to camera…</string>
+    <string name="forget_overrides">Forget app overrides…</string>
+    <string name="info_firmware">Firmware</string>
+    <string name="info_serial">Serial</string>
+    <string name="info_part">Part number</string>
+    <string name="info_fpa">FPA</string>
+    <string name="info_myriad">Myriad</string>
+    <string name="disclaimer">Non-radiometric camera: temperatures are approximate, referenced to the sensor (FPA) temperature and the calibration offset.</string>
+
+    <!-- empty states -->
+    <string name="empty_nodev_title">Connect the Boson</string>
+    <string name="empty_nodev_body">Plug the camera into the USB-C port with an OTG cable or adapter. If it keeps disconnecting, use a powered USB-OTG hub.</string>
+    <string name="empty_cam_perm_title">Camera permission needed</string>
+    <string name="empty_cam_perm_body">Android only lets apps with the Camera permission open a USB video camera.</string>
+    <string name="empty_cam_denied_title">Camera permission denied</string>
+    <string name="empty_cam_denied_body">Allow the Camera permission in the app settings to open the Boson.</string>
+    <string name="empty_wait_usb_title">Waiting for USB access</string>
+    <string name="empty_wait_usb_body">Allow Boson Thermal to access the camera in the system dialog.</string>
+    <string name="empty_usb_denied_title">USB access denied</string>
+    <string name="empty_usb_denied_body">The app needs USB access to read the camera.</string>
+    <string name="empty_connecting_title">Starting video…</string>
+    <string name="empty_connecting_body">This takes a few seconds.</string>
+    <string name="empty_start_failed_title">Video did not start</string>
+    <string name="empty_start_failed_body">The camera did not start streaming (error %1$d). Unplug it and plug it back in, or retry.</string>
+    <string name="empty_start_failed_body_nodev">The camera disappeared while starting. Check the cable and retry.</string>
+    <string name="empty_start_failed_body_access">Android refused access to the camera. Unplug it, plug it back in and allow access.</string>
+    <string name="empty_start_failed_body_busy">The camera is in use by another app. Close it and retry.</string>
+    <string name="empty_detached_title">Camera disconnected</string>
+    <string name="empty_detached_body">Plug the Boson back in to continue.</string>
+    <string name="empty_open_failed_title">Cannot open the camera</string>
+    <string name="empty_open_failed_body">Android could not open the USB device. Unplug it and plug it back in.</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_allow">Allow</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="action_open">Open</string>
+    <string name="action_share">Share</string>
+
+    <!-- messages -->
+    <string name="msg_hint">Tap: move spot · long-press: centre · double-tap: full screen</string>
+    <string name="msg_cci_offline">Camera control is not connected</string>
+    <string name="msg_cci_unavailable">Camera control unavailable: %1$s</string>
+    <string name="msg_ffc_done">FFC done</string>
+    <string name="msg_ffc_failed">FFC failed (status 0x%1$08X)</string>
+    <string name="msg_warm_ffc">Warmed up: FFC done, temperatures stable</string>
+    <string name="msg_warm_ffc_failed">Warmed up (FFC failed)</string>
+    <string name="msg_param_set">%1$s: %2$s</string>
+    <string name="msg_param_failed">%1$s failed (status 0x%2$08X)</string>
+    <string name="msg_saved_settings">Settings saved to the camera</string>
+    <string name="msg_save_failed">Save failed (status 0x%1$08X)</string>
+    <string name="msg_overrides_forgotten">App overrides forgotten</string>
+    <string name="msg_cal_reset">Calibration reset</string>
+    <string name="msg_cal_set">Calibrated: offset %1$+.1f °C</string>
+    <string name="msg_cal_needs_live">Calibration needs a live image and the camera temperature</string>
+    <string name="msg_no_frame">No frame yet</string>
+    <string name="msg_photo_saved">Photo saved to %1$s</string>
+    <string name="msg_photo_failed">Photo failed: %1$s</string>
+    <string name="msg_rec_started">Recording</string>
+    <string name="msg_rec_saved">Video saved to %1$s</string>
+    <string name="msg_rec_discarded">Recording discarded (no frames)</string>
+    <string name="msg_rec_failed">Recording failed: %1$s</string>
+    <string name="msg_rec_stopped_error">Recording stopped: %1$s</string>
+    <string name="rec_reason_max_size">file size limit or storage full</string>
+    <string name="rec_reason_max_duration">maximum duration reached</string>
+    <string name="rec_reason_error">encoder error %1$d</string>
+    <string name="rec_reason_surface">encoder surface lost</string>
+    <string name="err_storage_full">not enough free storage</string>
+    <string name="err_rec_stuck">encoder did not stop, file deleted</string>
+    <string name="err_compress">image encoding failed</string>
+    <string name="photo_stamp">%1$s · Approx. · offset %2$+.1f °C</string>
+    <string name="share_title">Share capture</string>
+    <string name="msg_no_viewer">No app can open this file</string>
+    <string name="err_mediastore">MediaStore insert failed</string>
+
+    <!-- dialogs -->
+    <string name="dlg_cal_title">Calibrate at the spot</string>
+    <string name="dlg_cal_msg">Enter the true temperature under the cross. The offset applies to every reading.</string>
+    <string name="dlg_cal_hint">e.g. 34 (skin)</string>
+    <string name="dlg_cal_current">Current offset %1$+.1f °C</string>
+    <string name="dlg_cal_reset">Reset offset</string>
+    <string name="dlg_apply">Apply</string>
+    <string name="dlg_invalid">Not a valid value</string>
+    <string name="dlg_save_title">Save settings to camera?</string>
+    <string name="dlg_save_msg">Writes the current camera settings to its flash memory. They become the power-up defaults.</string>
+    <string name="dlg_save_ok">Save to flash</string>
+    <string name="dlg_forget_title">Forget app overrides?</string>
+    <string name="dlg_forget_msg">The app stops re-applying the camera settings you changed. The camera itself is not reset: unplug it to get its power-up defaults back.</string>
+    <string name="dlg_forget_ok">Forget</string>
+    <string name="dlg_settings_title">Camera settings</string>
+    <string name="dlg_settings_reading">Reading camera…</string>
+    <string name="dlg_refresh">Refresh</string>
+    <string name="dlg_close">Close</string>
+    <string name="dlg_set">Set</string>
+    <string name="dlg_range">Range %1$s to %2$s</string>
+    <string name="dlg_read_only">Read-only</string>
+    <string name="dlg_na">n/a</string>
 </resources>

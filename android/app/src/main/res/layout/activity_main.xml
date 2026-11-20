@@ -1,132 +1,604 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  One layout for both orientations. MainActivity.applyOrientation() switches root and
+  action_rail between horizontal (landscape: image | rail | panel) and vertical
+  (portrait: image / rail / panel), and reorders the rail buttons.
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000"
+    android:background="@color/bg"
+    android:baselineAligned="false"
+    android:divider="@drawable/divider_1dp"
     android:fitsSystemWindows="true"
-    android:orientation="vertical">
+    android:orientation="horizontal"
+    android:showDividers="middle">
 
-    <!-- image + capture buttons: left column in landscape, top block in portrait -->
+    <!-- status strip + image -->
     <LinearLayout
         android:id="@+id/media_column"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
         android:orientation="vertical">
 
-        <dev.thermalcam.boson.ThermalSurfaceView
-            android:id="@+id/thermal_view"
+        <HorizontalScrollView
+            android:id="@+id/status_strip"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal" />
+            android:layout_height="@dimen/status_strip_h"
+            android:background="@color/surface"
+            android:fillViewport="true"
+            android:scrollbars="none">
 
-        <LinearLayout
-            android:id="@+id/capture_row"
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/space_m"
+                android:paddingEnd="@dimen/space_l">
+
+                <TextView
+                    android:id="@+id/chip_state"
+                    style="@style/Widget.Boson.Chip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:accessibilityLiveRegion="polite"
+                    android:drawableStart="@drawable/dot_8dp"
+                    android:text="@string/state_no_camera" />
+
+                <LinearLayout
+                    android:id="@+id/chip_rec"
+                    style="@style/Widget.Boson.Chip"
+                    android:backgroundTint="@color/rec_tint"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <View
+                        android:id="@+id/rec_dot"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:layout_marginEnd="6dp"
+                        android:background="@drawable/dot_8dp"
+                        android:backgroundTint="@color/rec" />
+
+                    <Chronometer
+                        android:id="@+id/rec_time"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFeatureSettings="tnum"
+                        android:textAppearance="@style/TextAppearance.Boson.Caption"
+                        android:textColor="@color/rec" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/chip_warm"
+                    style="@style/Widget.Boson.Chip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:drawableStart="@drawable/dot_8dp"
+                    android:drawableTint="@color/warning"
+                    android:text="@string/chip_warming"
+                    android:textColor="@color/warning"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/chip_gain"
+                    style="@style/Widget.Boson.Chip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:drawableStart="@drawable/dot_8dp"
+                    android:drawableTint="@color/info"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/chip_cal"
+                    style="@style/Widget.Boson.Chip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:drawableStart="@drawable/dot_8dp"
+                    android:drawableTint="@color/accent"
+                    android:visibility="gone" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <TextView
+                    android:id="@+id/readout_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/space_s"
+                    android:maxLines="1"
+                    android:textAppearance="@style/TextAppearance.Boson.Readout"
+                    android:textColor="@color/text_secondary" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <FrameLayout
+            android:id="@+id/image_frame"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:paddingHorizontal="8dp">
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:background="@color/image_bg">
 
-            <Button android:id="@+id/photo_button" android:layout_width="0dp"
-                android:layout_height="wrap_content" android:layout_weight="1"
-                android:layout_marginEnd="4dp" android:text="Photo" />
-            <Button android:id="@+id/record_button" android:layout_width="0dp"
-                android:layout_height="wrap_content" android:layout_weight="1"
-                android:layout_marginStart="4dp" android:text="● Record video" />
-        </LinearLayout>
+            <dev.thermalcam.boson.ThermalSurfaceView
+                android:id="@+id/thermal_view"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:contentDescription="@string/cd_image"
+                android:focusable="true"
+                android:importantForAccessibility="yes"
+                android:keepScreenOn="true" />
+
+            <!-- no camera / permission / connecting / errors -->
+            <LinearLayout
+                android:id="@+id/empty_state"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@color/image_bg"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:padding="@dimen/space_xl">
+
+                <ImageView
+                    android:id="@+id/empty_icon"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:importantForAccessibility="no"
+                    android:src="@drawable/ic_usb"
+                    android:tint="@color/text_secondary" />
+
+                <ProgressBar
+                    android:id="@+id/empty_progress"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:indeterminateTint="@color/accent"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/empty_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_l"
+                    android:accessibilityLiveRegion="polite"
+                    android:gravity="center"
+                    android:textAppearance="@style/TextAppearance.Boson.Title" />
+
+                <TextView
+                    android:id="@+id/empty_body"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_s"
+                    android:gravity="center"
+                    android:maxWidth="420dp"
+                    android:textAppearance="@style/TextAppearance.Boson.Secondary" />
+
+                <Button
+                    android:id="@+id/empty_action"
+                    style="@style/Widget.Boson.Button.Outlined"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_l"
+                    android:gravity="center"
+                    android:paddingEnd="@dimen/space_l"
+                    android:textColor="@color/accent"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/rec_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:layout_gravity="top|start"
+                android:layout_margin="@dimen/space_l"
+                android:background="@drawable/bg_pill"
+                android:elevation="@dimen/elev_pill"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/space_m"
+                android:paddingEnd="@dimen/space_m"
+                android:visibility="gone">
+
+                <View
+                    android:id="@+id/rec_badge_dot"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:layout_marginEnd="6dp"
+                    android:background="@drawable/dot_8dp"
+                    android:backgroundTint="@color/rec" />
+
+                <Chronometer
+                    android:id="@+id/rec_badge_time"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFeatureSettings="tnum"
+                    android:textAppearance="@style/TextAppearance.Boson.Caption"
+                    android:textColor="@color/text_primary" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/exit_fullscreen"
+                android:layout_width="@dimen/touch_min"
+                android:layout_height="@dimen/touch_min"
+                android:layout_gravity="top|end"
+                android:layout_margin="@dimen/space_l"
+                android:background="@drawable/bg_scrim_circle"
+                android:contentDescription="@string/cd_exit_fullscreen"
+                android:src="@drawable/ic_fullscreen_exit"
+                android:tint="@color/text_primary"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/message_pill"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|center_horizontal"
+                android:layout_marginStart="@dimen/space_l"
+                android:layout_marginEnd="@dimen/space_l"
+                android:layout_marginBottom="@dimen/space_l"
+                android:accessibilityLiveRegion="polite"
+                android:alpha="0"
+                android:background="@drawable/bg_pill"
+                android:elevation="@dimen/elev_pill"
+                android:gravity="center_vertical"
+                android:minHeight="40dp"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/space_l"
+                android:paddingEnd="@dimen/space_l"
+                android:visibility="gone">
+
+                <View
+                    android:id="@+id/message_dot"
+                    android:layout_width="8dp"
+                    android:layout_height="8dp"
+                    android:layout_marginEnd="@dimen/space_s"
+                    android:background="@drawable/dot_8dp" />
+
+                <TextView
+                    android:id="@+id/message_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:paddingTop="@dimen/space_s"
+                    android:paddingBottom="@dimen/space_s"
+                    android:textAppearance="@style/TextAppearance.Boson.Secondary"
+                    android:textColor="@color/text_primary" />
+
+                <!-- shown after a photo / video is saved (Android 10+: MediaStore Uri) -->
+                <Button
+                    android:id="@+id/message_open"
+                    style="@style/Widget.Boson.DialogButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/space_s"
+                    android:minWidth="@dimen/touch_min"
+                    android:text="@string/action_open"
+                    android:visibility="gone" />
+
+                <Button
+                    android:id="@+id/message_share"
+                    style="@style/Widget.Boson.DialogButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="@dimen/touch_min"
+                    android:text="@string/action_share"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- vertical in landscape, horizontal in portrait; children reordered in code -->
+    <LinearLayout
+        android:id="@+id/action_rail"
+        android:layout_width="@dimen/rail_w"
+        android:layout_height="match_parent"
+        android:background="@color/surface"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingTop="@dimen/space_s"
+        android:paddingBottom="@dimen/space_s">
+
+        <Button
+            android:id="@+id/btn_fullscreen"
+            style="@style/Widget.Boson.RailButton"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/rail_button"
+            android:drawableTop="@drawable/ic_fullscreen"
+            android:text="@string/rail_fullscreen" />
+
+        <Button
+            android:id="@+id/btn_ffc"
+            style="@style/Widget.Boson.RailButton"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/rail_button"
+            android:drawableTop="@drawable/ic_ffc"
+            android:text="@string/rail_ffc" />
+
+        <Space
+            android:id="@+id/rail_space_1"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <ImageButton
+            android:id="@+id/photo_button"
+            android:layout_width="@dimen/shutter"
+            android:layout_height="@dimen/shutter"
+            android:layout_margin="@dimen/space_xs"
+            android:background="@drawable/bg_shutter"
+            android:contentDescription="@string/cd_photo" />
+
+        <ImageButton
+            android:id="@+id/record_button"
+            android:layout_width="@dimen/shutter"
+            android:layout_height="@dimen/shutter"
+            android:layout_margin="@dimen/space_xs"
+            android:background="@drawable/bg_record"
+            android:contentDescription="@string/cd_record_start" />
+
+        <Space
+            android:id="@+id/rail_space_2"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <Button
+            android:id="@+id/calibrate_button"
+            style="@style/Widget.Boson.RailButton"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/rail_button"
+            android:drawableTop="@drawable/ic_calibrate"
+            android:text="@string/rail_calibrate" />
+
+        <Button
+            android:id="@+id/btn_panel"
+            style="@style/Widget.Boson.RailButton"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/rail_button"
+            android:drawableTop="@drawable/ic_tune"
+            android:text="@string/rail_panel" />
     </LinearLayout>
 
     <ScrollView
         android:id="@+id/controls_scroll"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:background="#202020">
+        android:layout_width="@dimen/panel_w"
+        android:layout_height="match_parent"
+        android:background="@color/surface"
+        android:scrollbarStyle="outsideOverlay">
 
         <LinearLayout
+            android:id="@+id/panel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:paddingStart="@dimen/space_l"
+            android:paddingEnd="@dimen/space_l"
+            android:paddingBottom="@dimen/space_xl">
 
-            <TextView
-                android:id="@+id/status_text"
+            <!-- DISPLAY: app-side, always available -->
+            <TextView style="@style/Widget.Boson.SectionHeader" android:paddingTop="@dimen/space_l"
+                android:text="@string/section_display" />
+
+            <TextView style="@style/Boson.Label" android:layout_marginTop="0dp" android:text="@string/label_palette" />
+            <HorizontalScrollView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Plug in the Boson (USB-OTG)"
-                android:textColor="#FFFFFF" />
+                android:fadingEdgeLength="32dp"
+                android:requiresFadingEdge="horizontal"
+                android:scrollbars="none">
+                <RadioGroup
+                    android:id="@+id/palette_group"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <RadioButton android:id="@+id/palette_iron" style="@style/Widget.Boson.Segment"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:checked="true" android:text="@string/palette_iron" />
+                    <RadioButton android:id="@+id/palette_white" style="@style/Widget.Boson.Segment"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="@string/palette_white" />
+                    <RadioButton android:id="@+id/palette_black" style="@style/Widget.Boson.Segment"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="@string/palette_black" />
+                    <RadioButton android:id="@+id/palette_rainbow" style="@style/Widget.Boson.Segment"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="@string/palette_rainbow" />
+                    <RadioButton android:id="@+id/palette_lava" style="@style/Widget.Boson.Segment"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="@string/palette_lava" />
+                    <RadioButton android:id="@+id/palette_arctic" style="@style/Widget.Boson.Segment"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="@string/palette_arctic" />
+                    <RadioButton android:id="@+id/palette_hotspot" style="@style/Widget.Boson.Segment"
+                        android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="@string/palette_hotspot" />
+                </RadioGroup>
+            </HorizontalScrollView>
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_marginTop="8dp" android:text="Palette" android:textColor="#AAAAAA" />
-            <RadioGroup android:id="@+id/palette_group" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:orientation="horizontal">
-                <RadioButton android:id="@+id/palette_iron" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:checked="true" android:text="Iron" />
-                <RadioButton android:id="@+id/palette_white" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:text="White hot" />
-                <RadioButton android:id="@+id/palette_black" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:text="Black hot" />
+            <TextView style="@style/Boson.Label" android:text="@string/label_units" />
+            <RadioGroup
+                android:id="@+id/unit_group"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <RadioButton android:id="@+id/unit_c" style="@style/Widget.Boson.Segment"
+                    android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                    android:checked="true" android:text="@string/unit_c" />
+                <RadioButton android:id="@+id/unit_f" style="@style/Widget.Boson.Segment"
+                    android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                    android:text="@string/unit_f" />
+                <RadioButton android:id="@+id/unit_k" style="@style/Widget.Boson.Segment"
+                    android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                    android:text="@string/unit_k" />
+                <RadioButton android:id="@+id/unit_raw" style="@style/Widget.Boson.Segment"
+                    android:layout_width="0dp" android:layout_weight="1" android:layout_marginEnd="0dp" android:layout_height="wrap_content"
+                    android:text="@string/unit_raw" />
             </RadioGroup>
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_marginTop="8dp" android:text="Units" android:textColor="#AAAAAA" />
-            <RadioGroup android:id="@+id/unit_group" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:orientation="horizontal">
-                <RadioButton android:id="@+id/unit_c" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:checked="true" android:text="°C" />
-                <RadioButton android:id="@+id/unit_f" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:text="°F" />
-                <RadioButton android:id="@+id/unit_k" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:text="K" />
-                <RadioButton android:id="@+id/unit_raw" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:text="Raw" />
-            </RadioGroup>
+            <Switch android:id="@+id/spot_switch" style="@style/Widget.Boson.Switch"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_m"
+                android:checked="true" android:text="@string/switch_spot" />
+            <TextView style="@style/Boson.Subtitle" android:importantForAccessibility="no" android:text="@string/switch_spot_sub" />
+            <Switch android:id="@+id/nr_switch" style="@style/Widget.Boson.Switch"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:checked="true" android:text="@string/switch_nr" />
+            <TextView style="@style/Boson.Subtitle" android:importantForAccessibility="no" android:text="@string/switch_nr_sub" />
+            <Switch android:id="@+id/minmax_switch" style="@style/Widget.Boson.Switch"
+                android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/minmax_markers" />
+            <TextView style="@style/Boson.Subtitle" android:importantForAccessibility="no" android:text="@string/minmax_markers_sub" />
 
-            <Switch android:id="@+id/spot_switch" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:checked="true" android:text="Spot meter" />
-            <Switch android:id="@+id/nr_switch" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:checked="true" android:text="Noise reduction" />
+            <TextView
+                android:id="@+id/control_unavailable"
+                android:textAppearance="@style/TextAppearance.Boson.Secondary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_m"
+                android:drawableStart="@drawable/dot_8dp"
+                android:drawablePadding="@dimen/space_s"
+                android:drawableTint="@color/warning"
+                android:gravity="center_vertical"
+                android:text="@string/control_unavailable"
+                android:visibility="gone" />
 
-            <Button android:id="@+id/ffc_button" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Run FFC" />
-            <Button android:id="@+id/calibrate_button" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:text="Calibrate spot…" />
+            <!-- CAMERA: CCI, disabled while the control link is down -->
+            <LinearLayout
+                android:id="@+id/section_camera"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_marginTop="8dp" android:text="Gain mode" android:textColor="#AAAAAA" />
-            <RadioGroup android:id="@+id/gain_group" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:orientation="horizontal">
-                <RadioButton android:id="@+id/gain_high" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:text="High" />
-                <RadioButton android:id="@+id/gain_low" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:text="Low" />
-                <RadioButton android:id="@+id/gain_auto" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:text="Auto" />
-            </RadioGroup>
+                <TextView style="@style/Widget.Boson.SectionHeader" android:text="@string/section_camera" />
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_marginTop="8dp" android:text="FFC mode" android:textColor="#AAAAAA" />
-            <RadioGroup android:id="@+id/ffc_mode_group" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:orientation="horizontal">
-                <RadioButton android:id="@+id/ffc_manual" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:text="Manual" />
-                <RadioButton android:id="@+id/ffc_auto" android:layout_width="wrap_content"
-                    android:layout_height="wrap_content" android:text="Auto" />
-            </RadioGroup>
+                <TextView style="@style/Boson.Label" android:layout_marginTop="0dp" android:text="@string/label_gain" />
+                <RadioGroup
+                    android:id="@+id/gain_group"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <RadioButton android:id="@+id/gain_high" style="@style/Widget.Boson.Segment"
+                        android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                        android:text="@string/gain_high" />
+                    <RadioButton android:id="@+id/gain_low" style="@style/Widget.Boson.Segment"
+                        android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                        android:text="@string/gain_low" />
+                    <RadioButton android:id="@+id/gain_auto" style="@style/Widget.Boson.Segment"
+                        android:layout_width="0dp" android:layout_weight="1" android:layout_marginEnd="0dp" android:layout_height="wrap_content"
+                        android:text="@string/gain_auto" />
+                </RadioGroup>
+                <TextView
+                    android:id="@+id/gain_helper"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_s"
+                    android:drawableStart="@drawable/dot_8dp"
+                    android:drawablePadding="@dimen/space_s"
+                    android:drawableTint="@color/info"
+                    android:text="@string/gain_helper_low"
+                    android:textAppearance="@style/TextAppearance.Boson.Secondary"
+                    android:visibility="gone" />
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                android:layout_marginTop="8dp" android:text="Camera filters" android:textColor="#AAAAAA" />
-            <Switch android:id="@+id/tf_switch" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:text="Temporal filter (TF)" />
-            <Switch android:id="@+id/scnr_switch" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:text="Column noise filter (SCNR)" />
-            <Switch android:id="@+id/spnr_switch" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:text="Spatial noise filter (SPNR)" />
+                <TextView style="@style/Boson.Label" android:text="@string/label_ffc_mode" />
+                <RadioGroup
+                    android:id="@+id/ffc_mode_group"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <RadioButton android:id="@+id/ffc_auto" style="@style/Widget.Boson.Segment"
+                        android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                        android:text="@string/ffc_auto" />
+                    <RadioButton android:id="@+id/ffc_manual" style="@style/Widget.Boson.Segment"
+                        android:layout_width="0dp" android:layout_weight="1" android:layout_marginEnd="0dp" android:layout_height="wrap_content"
+                        android:text="@string/ffc_manual" />
+                </RadioGroup>
+            </LinearLayout>
 
-            <Button android:id="@+id/all_settings_button" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="All camera settings" />
-            <Button android:id="@+id/save_button" android:layout_width="match_parent"
-                android:layout_height="wrap_content" android:text="Save settings to camera" />
+            <LinearLayout
+                android:id="@+id/section_filters"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView style="@style/Widget.Boson.SectionHeader" android:text="@string/section_filters" />
+                <Switch android:id="@+id/tf_switch" style="@style/Widget.Boson.Switch"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/switch_tf" />
+                <TextView style="@style/Boson.Subtitle" android:importantForAccessibility="no" android:text="@string/switch_tf_sub" />
+                <Switch android:id="@+id/scnr_switch" style="@style/Widget.Boson.Switch"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/switch_scnr" />
+                <TextView style="@style/Boson.Subtitle" android:importantForAccessibility="no" android:text="@string/switch_scnr_sub" />
+                <Switch android:id="@+id/spnr_switch" style="@style/Widget.Boson.Switch"
+                    android:layout_width="match_parent" android:layout_height="wrap_content"
+                    android:text="@string/switch_spnr" />
+                <TextView style="@style/Boson.Subtitle" android:importantForAccessibility="no" android:text="@string/switch_spnr_sub" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/section_advanced"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView style="@style/Widget.Boson.SectionHeader" android:text="@string/section_advanced" />
+                <Button
+                    android:id="@+id/all_settings_button"
+                    style="@style/Widget.Boson.Button.Outlined"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:drawableStart="@drawable/ic_tune"
+                    android:drawableEnd="@drawable/ic_chevron_right"
+                    android:text="@string/all_settings" />
+                <Button
+                    android:id="@+id/save_button"
+                    style="@style/Widget.Boson.Button.Outlined.Warning"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_s"
+                    android:drawableStart="@drawable/ic_save"
+                    android:text="@string/save_to_camera" />
+                <Button
+                    android:id="@+id/forget_overrides_button"
+                    style="@style/Widget.Boson.Button.Outlined"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/space_s"
+                    android:text="@string/forget_overrides" />
+            </LinearLayout>
+
+            <TextView style="@style/Widget.Boson.SectionHeader" android:text="@string/section_info" />
+            <LinearLayout style="@style/Boson.InfoRow">
+                <TextView style="@style/Boson.InfoKey" android:text="@string/info_firmware" />
+                <TextView android:id="@+id/info_fw" style="@style/Boson.InfoValue" android:text="@string/dash" />
+            </LinearLayout>
+            <LinearLayout style="@style/Boson.InfoRow">
+                <TextView style="@style/Boson.InfoKey" android:text="@string/info_serial" />
+                <TextView android:id="@+id/info_sn" style="@style/Boson.InfoValue" android:text="@string/dash" />
+            </LinearLayout>
+            <LinearLayout style="@style/Boson.InfoRow">
+                <TextView style="@style/Boson.InfoKey" android:text="@string/info_part" />
+                <TextView android:id="@+id/info_pn" style="@style/Boson.InfoValue" android:text="@string/dash" />
+            </LinearLayout>
+            <LinearLayout style="@style/Boson.InfoRow">
+                <TextView style="@style/Boson.InfoKey" android:text="@string/info_fpa" />
+                <TextView android:id="@+id/info_fpa" style="@style/Boson.InfoValue" android:text="@string/dash" />
+            </LinearLayout>
+            <LinearLayout style="@style/Boson.InfoRow">
+                <TextView style="@style/Boson.InfoKey" android:text="@string/info_myriad" />
+                <TextView android:id="@+id/info_myriad" style="@style/Boson.InfoValue" android:text="@string/dash" />
+            </LinearLayout>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/space_m"
+                android:text="@string/disclaimer"
+                android:textAppearance="@style/TextAppearance.Boson.Caption" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

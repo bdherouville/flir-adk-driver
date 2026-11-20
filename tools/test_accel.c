@@ -68,6 +68,22 @@ int main(void)
 	flir_denoise(raw, den, acc, W * H, 20, 0);
 	assert(den[1000] == 22500);
 
+	/* overlay hot/cold markers: red under the hot pixel, blue above the cold one, off by default */
+	{
+		enum { OW = W + 100 };
+		static uint8_t src[W * H * 3], dst[OW * H * 3];
+		struct flir_overlay_opts ov = { .raw_min = 22000, .raw_max = 23000, .cross_hide = 1 };
+		flir_overlay(src, raw, W, H, &ov, dst);
+		assert(dst[((100 - 3) * OW + 200) * 3] == 0);           /* off: image untouched */
+		ov.minmax_show = 1;
+		ov.hot_x = 200; ov.hot_y = 100; ov.cold_x = 400; ov.cold_y = 300;
+		flir_overlay(src, raw, W, H, &ov, dst);
+		const uint8_t *hot = &dst[((100 - 3) * OW + 200) * 3];  /* inside the hot triangle */
+		const uint8_t *cold = &dst[((300 + 3) * OW + 400) * 3]; /* inside the cold triangle */
+		assert(hot[0] > 200 && hot[2] < 100);
+		assert(cold[2] > 200 && cold[0] < 100);
+	}
+
 	puts("test_accel: ok");
 	return 0;
 }

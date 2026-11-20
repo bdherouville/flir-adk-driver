@@ -354,6 +354,41 @@ int flir_overlay(const uint8_t *src_rgb, const uint16_t *raw,
 		draw_text(dst_rgb, ow, h, ux, 6, uname, 255, 255, 0);
 	}
 
+	/* Hot (red, pointing down) / cold (blue, pointing up) markers with their values */
+	if (opts->minmax_show) {
+		const struct { int x, y, dir; uint16_t v; uint8_t r, g, b; } m[2] = {
+			{ opts->hot_x, opts->hot_y, 1, opts->raw_max, 255, 40, 40 },
+			{ opts->cold_x, opts->cold_y, -1, opts->raw_min, 60, 140, 255 },
+		};
+		for (int k = 0; k < 2; k++) {
+			/* tip on the pixel, 7 px tall, outlined in black; flipped at the image edge */
+			int dir = m[k].dir;
+			if (m[k].y - dir * 7 < 0 || m[k].y - dir * 7 >= h)
+				dir = -dir;
+			for (int row = 0; row <= 7; row++) {
+				int y = m[k].y - dir * row;
+				for (int dx = -row; dx <= row; dx++) {
+					int edge = row == 7 || dx == -row || dx == row;
+					if (m[k].x + dx >= w)
+						continue; /* never onto the colour bar */
+					set_pixel(dst_rgb, ow, h, m[k].x + dx, y,
+						  edge ? 0 : m[k].r, edge ? 0 : m[k].g, edge ? 0 : m[k].b);
+				}
+			}
+			char v[24];
+			fmt_value(v, sizeof(v), m[k].v, opts);
+			int vl = (int)strlen(v);
+			int vx = m[k].x - vl * CHAR_W / 2;
+			int vy = dir > 0 ? m[k].y - 10 - CHAR_H : m[k].y + 10;
+			if (vx < 2) vx = 2;
+			if (vx + vl * CHAR_W + 2 > w) vx = w - vl * CHAR_W - 2; /* off the colour bar */
+			if (vy < 2) vy = m[k].y + 10;
+			if (vy + CHAR_H + 2 > h) vy = m[k].y - 10 - CHAR_H;
+			draw_box(dst_rgb, ow, h, vx - 2, vy - 1, vl * CHAR_W + 4, CHAR_H + 2, 0, 0, 0);
+			draw_text(dst_rgb, ow, h, vx, vy, v, m[k].r, m[k].g, m[k].b);
+		}
+	}
+
 	/* Spot meter box outline */
 	if (opts->spot_enabled) {
 		int sr = opts->spot_row_start, er = opts->spot_row_end;

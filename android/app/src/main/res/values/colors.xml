@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Design tokens. Dark only: the app is used next to a thermal image, often in the dark. -->
+<resources>
+    <color name="bg">#FF0E0F11</color>
+    <color name="image_bg">#FF000000</color>
+    <color name="surface">#FF16181B</color>
+    <color name="surface_2">#FF1F2226</color>
+    <color name="surface_3">#FF2A2E33</color>
+    <color name="outline">#FF34393F</color>
+    <color name="text_primary">#FFF2F3F5</color>
+    <color name="text_secondary">#FFA2A8B0</color>
+    <color name="text_disabled">#FF5D636A</color>
+    <color name="accent">#FFFF9F1C</color>
+    <color name="accent_container">#FF3B2810</color>
+    <color name="on_accent">#FF1A1206</color>
+    <color name="rec">#FFFF453A</color>
+    <color name="rec_tint">#33FF453A</color>
+    <color name="warning">#FFFFC94D</color>
+    <color name="success">#FF3DD68C</color>
+    <color name="info">#FF6CC4FF</color>
+    <color name="ripple">#33FFFFFF</color>
+    <color name="scrim">#99000000</color>
+    <color name="pill_bg">#E61F2226</color>
+</resources>

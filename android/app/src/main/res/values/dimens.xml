@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="space_xs">4dp</dimen>
+    <dimen name="space_s">8dp</dimen>
+    <dimen name="space_m">12dp</dimen>
+    <dimen name="space_l">16dp</dimen>
+    <dimen name="space_xl">24dp</dimen>
+    <dimen name="touch_min">48dp</dimen>
+    <dimen name="status_strip_h">48dp</dimen>
+    <dimen name="rail_w">88dp</dimen>
+    <dimen name="rail_button">64dp</dimen>
+    <dimen name="shutter">72dp</dimen>
+    <dimen name="panel_w">320dp</dimen>
+    <dimen name="radius_s">6dp</dimen>
+    <dimen name="radius_m">10dp</dimen>
+    <dimen name="radius_l">16dp</dimen>
+    <dimen name="radius_pill">999dp</dimen>
+    <dimen name="elev_pill">6dp</dimen>
+    <dimen name="elev_dialog">12dp</dimen>
+    <dimen name="icon">24dp</dimen>
+</resources>

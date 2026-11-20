@@ -3,7 +3,7 @@
  *                -> flir_loop pipeline -> RGBA 740x512
  *
  * Mirrors tools/flir_loop.c: freeze/FFC hold, denoise (thresh 20), HEQ AGC,
- * palette (iron-bow via accel colorize, white/black-hot via tables),
+ * palette (iron-bow via accel colorize, white/black-hot, rainbow, lava, arctic, hot spot via tables),
  * flir_gray_to_raw labels, overlay with FPA-referenced temperatures.
  * Output goes to an ANativeWindow (SurfaceView) and is kept for snapshots.
  */
@@ -70,6 +70,7 @@ static atomic_int g_lut = FLIR_LUT_IRONBOW;
 static atomic_int g_unit = FLIR_UNIT_RAW;
 static atomic_int g_spot = 1;
 static atomic_int g_nr = 1;
+static atomic_int g_minmax = 0;    /* hot/cold markers on the image */
 static atomic_int g_fpa_cx10 = 0;
 /* spot crosshair in sensor pixels (tap to move); reading = 5x5 mean around it */
 static atomic_int g_spot_x = W / 2, g_spot_y = H / 2;
@@ -91,6 +92,34 @@ static int have_prev, frozen, nr_was, settle;
 static uint16_t work_buf[W * H];
 static uint8_t gray[W * H], rgb[W * H * 3], out_rgb[OW * H * 3], out_rgba[OW * H * 4];
 static uint8_t grey_lut[256][3], inv_lut[256][3];
+/* extra palettes, built once by the worker (build_palettes) */
+static uint8_t rainbow_lut[256][3], lava_lut[256][3], arctic_lut[256][3], hotspot_lut[256][3];
+static pthread_once_t g_pal_once = PTHREAD_ONCE_INIT;
+
+/* piecewise-linear gradient through n evenly spaced RGB stops */
+static void gradient(uint8_t lut[256][3], const uint8_t (*stops)[3], int n)
+{
+	for (int i = 0; i < 256; i++) {
+		int seg = i * (n - 1) / 256, t0 = seg * 255 / (n - 1), t1 = (seg + 1) * 255 / (n - 1);
+		for (int c = 0; c < 3; c++)
+			lut[i][c] = (uint8_t)(stops[seg][c] + (stops[seg + 1][c] - stops[seg][c]) * (i - t0) / (t1 - t0));
+	}
+}
+
+static void build_palettes(void)
+{
+	static const uint8_t rainbow[][3] = { {0,0,128}, {0,0,255}, {0,255,255}, {0,255,0}, {255,255,0}, {255,0,0} };
+	static const uint8_t lava[][3]    = { {0,0,0}, {80,0,90}, {200,0,0}, {255,120,0}, {255,230,0}, {255,255,255} };
+	static const uint8_t arctic[][3]  = { {0,0,40}, {0,40,160}, {40,140,230}, {180,230,255}, {255,200,60}, {255,255,220} };
+	gradient(rainbow_lut, rainbow, 6);
+	gradient(lava_lut, lava, 6);
+	gradient(arctic_lut, arctic, 6);
+	for (int i = 0; i < 256; i++) { /* grey, top ~10 % in red */
+		int hot = i >= 230;
+		hotspot_lut[i][0] = hot ? (uint8_t)(200 + (i - 230) * 55 / 25) : (uint8_t)i;
+		hotspot_lut[i][1] = hotspot_lut[i][2] = hot ? 0 : (uint8_t)i;
+	}
+}
 
 /* caller holds g_out_lock */
 static void post_locked(void)
@@ -169,14 +198,24 @@ static void process_frame(const uint16_t *cam)
 	}
 
 	uint16_t lo = 0xFFFF, hi = 0;
+	int lo_i = 0, hi_i = 0;
 	for (int i = 0; i < W * H; i++) {
-		if (raw[i] < lo) lo = raw[i];
-		if (raw[i] > hi) hi = raw[i];
+		if (raw[i] < lo) { lo = raw[i]; lo_i = i; }
+		if (raw[i] > hi) { hi = raw[i]; hi_i = i; }
 	}
 	flir_accel_generic.agc_process(raw, gray, W, H, NULL);
 
-	const uint8_t (*pal)[3] = lut == FLIR_LUT_WHITEHOT ? (const uint8_t (*)[3])grey_lut :
-				  lut == FLIR_LUT_BLACKHOT ? (const uint8_t (*)[3])inv_lut : NULL;
+	pthread_once(&g_pal_once, build_palettes);
+	const uint8_t (*pal)[3];
+	switch (lut) {
+	case FLIR_LUT_WHITEHOT: pal = (const uint8_t (*)[3])grey_lut; break;
+	case FLIR_LUT_BLACKHOT: pal = (const uint8_t (*)[3])inv_lut; break;
+	case FLIR_LUT_RAINBOW:  pal = (const uint8_t (*)[3])rainbow_lut; break;
+	case FLIR_LUT_LAVA:     pal = (const uint8_t (*)[3])lava_lut; break;
+	case FLIR_LUT_ARCTIC:   pal = (const uint8_t (*)[3])arctic_lut; break;
+	case FLIR_LUT_HOTTEST:  pal = (const uint8_t (*)[3])hotspot_lut; break;
+	default:                pal = NULL; /* iron-bow */
+	}
 	if (pal)
 		for (int i = 0; i < W * H; i++)
 			memcpy(&rgb[i * 3], pal[gray[i]], 3);
@@ -195,6 +234,9 @@ static void process_frame(const uint16_t *cam)
 		.ref_raw = FLIR_CAL_RAW_AT_FPA,
 		.palette = pal,
 		.gray_to_raw = g2r,
+		.minmax_show = atomic_load(&g_minmax),
+		.hot_x = (uint16_t)(hi_i % W), .hot_y = (uint16_t)(hi_i / W),
+		.cold_x = (uint16_t)(lo_i % W), .cold_y = (uint16_t)(lo_i / W),
 	};
 	flir_gray_to_raw(raw, gray, W * H, g2r);
 	flir_overlay(rgb, raw, W, H, &ov, out_rgb);
@@ -548,10 +590,12 @@ Java_dev_thermalcam_boson_NativeBridge_nativeSetSurface(JNIEnv *env, jclass cls,
 
 JNIEXPORT void JNICALL
 Java_dev_thermalcam_boson_NativeBridge_nativeSetSettings(JNIEnv *env, jclass cls, jint lut,
-							jint unit, jboolean spot, jboolean nr)
+							jint unit, jboolean spot, jboolean nr,
+							jboolean minmax)
 {
 	(void)env; (void)cls;
 	atomic_store(&g_lut, lut);
+	atomic_store(&g_minmax, minmax ? 1 : 0);
 	atomic_store(&g_unit, unit);
 	atomic_store(&g_spot, spot ? 1 : 0);
 	atomic_store(&g_nr, nr ? 1 : 0);

@@ -12,16 +12,28 @@ camera over CCI. The app is not affiliated with Teledyne FLIR. FLIR and Boson ar
   (`libusb_wrap_sys_device`). The app sends PROBE/COMMIT itself and reads 5 bulk transfers of
   16 KB each, parsed the way Linux `uvcvideo` does it (header, FID/EOF, payload end on a short
   transfer or at dwMaxPayloadTransferSize).
-- Processing (native, repo C code compiled unchanged): freeze/FFC hold, temporal denoise, HEQ AGC,
-  iron-bow / white-hot / black-hot palette, color bar with temperature labels, spot meter.
+- Processing (native, repo C code): freeze/FFC hold, temporal denoise, HEQ AGC,
+  palettes iron-bow / white-hot / black-hot / rainbow / lava / arctic / hot spot (grey, top ~10 % red),
+  color bar with temperature labels, spot meter, optional hot/cold markers (red triangle at the
+  hottest pixel, blue at the coldest, with their values; `flir_overlay_opts.minmax_show`).
   Output: 740x512 RGBA (image plus 100 px color bar) drawn on a `SurfaceView`.
 - Control (Kotlin): the CCI/FSLP protocol over the camera's CDC-ACM data interface (USB bulk).
   One thread owns the port. FPA and Myriad temperatures are polled every 5 s.
-- UI: palette, units (°C/°F/K/raw), spot meter, noise reduction, Run FFC, gain mode,
-  FFC mode, the camera's TF/SCNR/SPNR filters, status (FPA, Myriad, firmware, SN, PN),
-  Save settings (asks for confirmation; writes the camera's flash), an "All camera settings"
-  dialog generated from the CCI table, and Photo (PNG) / Record video (H.264 MP4) buttons
-  under the image.
+- UI (platform `Theme.Material`, no AppCompat; tokens in `res/values/{colors,dimens,styles,themes}.xml`):
+  one layout for both orientations. Landscape: status strip + image | action rail | settings panel
+  (can be hidden). Portrait: status strip / image / horizontal rail / panel. Status chips (Live,
+  Warming up, gain, calibration offset, REC timer), an empty state over the image with the next
+  step (permission, USB access, start errors in plain text), and a message pill instead of toasts.
+  Image gestures: tap = move the spot, long press = centre it, double tap = full screen (Back exits).
+- Panel: DISPLAY (palette, units, spot, noise reduction, hot/cold markers), CAMERA (gain, FFC mode,
+  Run FFC), CAMERA FILTERS (TF/SCNR/SPNR), ADVANCED ("All camera settings" dialog generated from the
+  CCI table, Save to flash with a confirm dialog, "Forget app overrides…" which stops re-applying the
+  settings changed in the app, camera untouched), CAMERA INFO.
+- Photo (PNG, date/time and calibration offset burnt in) and Record video (H.264 MP4). After a save
+  the message offers Open / Share (Android 10+). Recording stops cleanly at 3.5 GB or when 200 MB of
+  storage is left, and on an encoder error.
+- USB start/stop (`nativeStart`/`nativeStop`) run on one background thread, so the UI never blocks
+  and a start and a stop never overlap.
 
 ## Build
 

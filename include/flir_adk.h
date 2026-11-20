@@ -207,6 +207,10 @@ struct flir_overlay_opts {
 	uint16_t ref_raw;           /* raw count at ref_temp_c (FLIR_CAL_RAW_AT_FPA) */
 	const uint8_t (*palette)[3];  /* color bar LUT, 256 entries; NULL = iron-bow */
 	const uint16_t *gray_to_raw;  /* 256 entries from flir_gray_to_raw(); NULL = linear min..max labels */
+	/* Hot/cold markers: red triangle at the hottest pixel (hot_x, hot_y), blue at the
+	 * coldest, each labelled with raw_max / raw_min. 0 = off (default). */
+	int      minmax_show;
+	uint16_t hot_x, hot_y, cold_x, cold_y;
 };
 
 /*
