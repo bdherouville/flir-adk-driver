@@ -1,0 +1,11 @@
+# Gradle / Android Studio
+.gradle/
+.kotlin/
+build/
+app/.cxx/
+local.properties
+.idea/
+*.iml
+captures/
+# fetched by fetch_deps.sh
+app/src/main/cpp/third_party/

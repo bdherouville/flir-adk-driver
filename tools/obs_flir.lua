@@ -1,9 +1,10 @@
 -- obs_flir.lua — FLIR Boson controls for OBS (Tools → Scripts → +)
--- Palette/units/spot go to flir_loop's control file; FFC/gain go to the camera via flir_ctl.
+-- Palette/units/spot go to flir_loop's control file; camera controls (FFC, gain, filters, status, save) go through flir_ctl.
 obs = obslua
 
 local cfg = { ctl = script_path() .. "../flir_ctl", cci = "/dev/ttyACM0", file = "/tmp/flir_loop.ctl",
-              lut = 4, unit = "C", spot = true, nr = true }
+              lut = 4, unit = "C", spot = true, nr = true,
+              ffc_mode = 1, tf = true, scnr = true, spnr = true, confirm_save = false }
 
 local function q(s) return "'" .. tostring(s):gsub("'", "'\\''") .. "'" end
 
@@ -26,7 +27,7 @@ local function write_ctl()
 end
 
 function script_description()
-	return "FLIR Boson: palette/units for flir_loop, FFC and gain via flir_ctl."
+	return "FLIR Boson: palette/units for flir_loop; FFC, gain, camera filters, status and save via flir_ctl."
 end
 
 function script_properties()
@@ -54,6 +55,28 @@ function script_properties()
 	obs.obs_properties_add_button(p, "apply_gain", "Apply gain", function() flir_ctl("gain " .. cfg.gain) return false end)
 	obs.obs_properties_add_button(p, "ffc", "Run FFC (shutter)", function() flir_ctl("ffc") return false end)
 	obs.obs_properties_add_button(p, "fpa", "Log FPA temperature", function() flir_ctl("fpa") return false end)
+
+	local ffc = obs.obs_properties_add_list(p, "ffc_mode", "FFC mode (camera)", obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_INT)
+	obs.obs_property_list_add_int(ffc, "Auto", 1)
+	obs.obs_property_list_add_int(ffc, "Manual", 0)
+	obs.obs_properties_add_button(p, "apply_ffc", "Apply FFC mode", function() flir_ctl("ffc-mode " .. cfg.ffc_mode) return false end)
+	obs.obs_properties_add_bool(p, "tf", "Camera temporal filter (TF)")
+	obs.obs_properties_add_bool(p, "scnr", "Camera column-noise filter (SCNR)")
+	obs.obs_properties_add_bool(p, "spnr", "Camera spatial filter (SPNR)")
+	obs.obs_properties_add_button(p, "apply_filters", "Apply camera filters", function()
+		for _, k in ipairs({ "tf", "scnr", "spnr" }) do flir_ctl(k .. " " .. (cfg[k] and 1 or 0)) end
+		return false
+	end)
+	obs.obs_properties_add_button(p, "status", "Log camera status", function() flir_ctl("status") return false end)
+	obs.obs_properties_add_bool(p, "confirm_save", "Confirm: allow writing settings to camera flash")
+	obs.obs_properties_add_button(p, "save", "Save camera settings (flash)", function()
+		if cfg.confirm_save then
+			flir_ctl("save --confirm")
+		else
+			obs.script_log(obs.LOG_WARNING, "tick 'Confirm' first: save writes the camera's flash")
+		end
+		return false
+	end)
 	return p
 end
 
@@ -66,6 +89,11 @@ function script_defaults(s)
 	obs.obs_data_set_default_bool(s, "spot", cfg.spot)
 	obs.obs_data_set_default_bool(s, "nr", cfg.nr)
 	obs.obs_data_set_default_int(s, "gain", 0)
+	obs.obs_data_set_default_int(s, "ffc_mode", 1)
+	obs.obs_data_set_default_bool(s, "tf", true)
+	obs.obs_data_set_default_bool(s, "scnr", true)
+	obs.obs_data_set_default_bool(s, "spnr", true)
+	obs.obs_data_set_default_bool(s, "confirm_save", false)
 end
 
 function script_update(s)
@@ -77,5 +105,10 @@ function script_update(s)
 	cfg.spot = obs.obs_data_get_bool(s, "spot")
 	cfg.nr   = obs.obs_data_get_bool(s, "nr")
 	cfg.gain = obs.obs_data_get_int(s, "gain")
+	cfg.ffc_mode    = obs.obs_data_get_int(s, "ffc_mode")
+	cfg.tf          = obs.obs_data_get_bool(s, "tf")
+	cfg.scnr        = obs.obs_data_get_bool(s, "scnr")
+	cfg.spnr        = obs.obs_data_get_bool(s, "spnr")
+	cfg.confirm_save = obs.obs_data_get_bool(s, "confirm_save")
 	write_ctl()
 end

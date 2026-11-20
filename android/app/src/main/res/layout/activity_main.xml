@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
+
+    <!-- image + capture buttons: left column in landscape, top block in portrait -->
+    <LinearLayout
+        android:id="@+id/media_column"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <dev.thermalcam.boson.ThermalSurfaceView
+            android:id="@+id/thermal_view"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal" />
+
+        <LinearLayout
+            android:id="@+id/capture_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingHorizontal="8dp">
+
+            <Button android:id="@+id/photo_button" android:layout_width="0dp"
+                android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_marginEnd="4dp" android:text="Photo" />
+            <Button android:id="@+id/record_button" android:layout_width="0dp"
+                android:layout_height="wrap_content" android:layout_weight="1"
+                android:layout_marginStart="4dp" android:text="● Record video" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <ScrollView
+        android:id="@+id/controls_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#202020">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <TextView
+                android:id="@+id/status_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Plug in the Boson (USB-OTG)"
+                android:textColor="#FFFFFF" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:text="Palette" android:textColor="#AAAAAA" />
+            <RadioGroup android:id="@+id/palette_group" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="horizontal">
+                <RadioButton android:id="@+id/palette_iron" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:checked="true" android:text="Iron" />
+                <RadioButton android:id="@+id/palette_white" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="White hot" />
+                <RadioButton android:id="@+id/palette_black" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="Black hot" />
+            </RadioGroup>
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:text="Units" android:textColor="#AAAAAA" />
+            <RadioGroup android:id="@+id/unit_group" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="horizontal">
+                <RadioButton android:id="@+id/unit_c" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:checked="true" android:text="°C" />
+                <RadioButton android:id="@+id/unit_f" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="°F" />
+                <RadioButton android:id="@+id/unit_k" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="K" />
+                <RadioButton android:id="@+id/unit_raw" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="Raw" />
+            </RadioGroup>
+
+            <Switch android:id="@+id/spot_switch" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:checked="true" android:text="Spot meter" />
+            <Switch android:id="@+id/nr_switch" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:checked="true" android:text="Noise reduction" />
+
+            <Button android:id="@+id/ffc_button" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Run FFC" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:text="Gain mode" android:textColor="#AAAAAA" />
+            <RadioGroup android:id="@+id/gain_group" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="horizontal">
+                <RadioButton android:id="@+id/gain_high" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="High" />
+                <RadioButton android:id="@+id/gain_low" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="Low" />
+                <RadioButton android:id="@+id/gain_auto" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="Auto" />
+            </RadioGroup>
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:text="FFC mode" android:textColor="#AAAAAA" />
+            <RadioGroup android:id="@+id/ffc_mode_group" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:orientation="horizontal">
+                <RadioButton android:id="@+id/ffc_manual" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="Manual" />
+                <RadioButton android:id="@+id/ffc_auto" android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" android:text="Auto" />
+            </RadioGroup>
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:text="Camera filters" android:textColor="#AAAAAA" />
+            <Switch android:id="@+id/tf_switch" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="Temporal filter (TF)" />
+            <Switch android:id="@+id/scnr_switch" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="Column noise filter (SCNR)" />
+            <Switch android:id="@+id/spnr_switch" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="Spatial noise filter (SPNR)" />
+
+            <Button android:id="@+id/all_settings_button" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="All camera settings" />
+            <Button android:id="@+id/save_button" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="Save settings to camera" />
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

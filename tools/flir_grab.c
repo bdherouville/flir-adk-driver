@@ -1,7 +1,7 @@
 /*
  * flir_grab — minimal tool: open camera, grab N frames, dump raw to stdout
  *
- * Usage: flir_grab [-d /dev/video0] [-c /dev/ttyACM0] [-m raw16|agc8] [-n 1]
+ * Usage: flir_grab [-d video_dev] [-c cci_dev] [-m raw16|agc8|nv12] [-r 30|60] [-n frames]
  */
 
 #include "flir_adk.h"
@@ -13,7 +13,7 @@
 
 static void usage(const char *prog)
 {
-	fprintf(stderr, "Usage: %s [-d video_dev] [-c cci_dev] [-m raw16|agc8] [-n frames]\n", prog);
+	fprintf(stderr, "Usage: %s [-d video_dev] [-c cci_dev] [-m raw16|agc8|nv12] [-r 30|60] [-n frames]\n", prog);
 	exit(1);
 }
 
@@ -23,9 +23,10 @@ int main(int argc, char **argv)
 	const char *cdev = NULL;
 	enum flir_video_mode mode = FLIR_MODE_AGC8;
 	int nframes = 1;
+	int fps = 0;
 	int opt;
 
-	while ((opt = getopt(argc, argv, "d:c:m:n:h")) != -1) {
+	while ((opt = getopt(argc, argv, "d:c:m:n:r:h")) != -1) {
 		switch (opt) {
 		case 'd': vdev = optarg; break;
 		case 'c': cdev = optarg; break;
@@ -34,14 +35,21 @@ int main(int argc, char **argv)
 				mode = FLIR_MODE_RAW16;
 			else if (strcmp(optarg, "agc8") == 0)
 				mode = FLIR_MODE_AGC8;
+			else if (strcmp(optarg, "nv12") == 0)
+				mode = FLIR_MODE_NV12;
 			else usage(argv[0]);
 			break;
 		case 'n': nframes = atoi(optarg); break;
+		case 'r':
+			fps = atoi(optarg);
+			if (fps != 30 && fps != 60)
+				usage(argv[0]);
+			break;
 		default:  usage(argv[0]);
 		}
 	}
 
-	struct flir_ctx *ctx = flir_open(vdev, cdev, mode);
+	struct flir_ctx *ctx = flir_open_ex(vdev, cdev, mode, fps);
 	if (!ctx) {
 		fprintf(stderr, "Failed to open %s\n", vdev);
 		return 1;

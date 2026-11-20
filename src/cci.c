@@ -40,7 +40,8 @@
 #define FSLP_MAX_PAYLOAD 256
 
 /*
- * Boson CCI Function IDs — from Boson+ SDK IDD Rev 410
+ * Boson CCI Function IDs — Boson Software IDD 102-2013-44 and Boson+ SDK IDD Rev 410
+ * (radiometry / TLinear / spot meter / agcSetMode are Boson+ only: 0x161 here)
  */
 #define CCI_BOSON_GET_CAMERA_SN    0x00050002
 #define CCI_BOSON_GET_CAMERA_PN    0x00050004
@@ -62,7 +63,7 @@
 #define CCI_TELEMETRY_SET_STATE    0x00040001
 #define CCI_TELEMETRY_GET_STATE    0x00040002
 
-#define CCI_SCALER_SET_ZOOM        0x000D0002
+#define CCI_SCALER_SET_ZOOM        0x000D0002 /* FLR_SCALER_ZOOM_PARAMS_T, 12 bytes */
 
 #define CCI_TLINEAR_SET_CONTROL    0x003E0001
 #define CCI_TLINEAR_GET_CONTROL    0x003E0002
@@ -335,6 +336,12 @@ int flir_cci_get_fpa_temp(struct flir_ctx *ctx, float *celsius)
 	return 0;
 }
 
+/*
+ * agcSetMode 0x00090033 is a Boson+ (IDD Rev 410) ID. Plain Boson firmware
+ * (this 20640A075-6PADK, fw 2.0.15223) has no AGC mode command and answers
+ * status 0x00000161. The AGC *parameters* (0x00090001..0x00090026) do work:
+ * see the "agc-*" entries of flir_params[] in cci_params.c. Kept for Boson+.
+ */
 int flir_cci_set_agc_mode(struct flir_ctx *ctx, int agc_type)
 {
 	uint8_t payload[4];
@@ -367,11 +374,22 @@ int flir_cci_get_serial_number(struct flir_ctx *ctx, uint32_t *sn)
 	return 0;
 }
 
+int flir_cci_set_zoom_params(struct flir_ctx *ctx, uint32_t zoom,
+			     uint32_t x_center, uint32_t y_center)
+{
+	uint8_t payload[12];
+	put32be(payload, zoom);
+	put32be(payload + 4, x_center);
+	put32be(payload + 8, y_center);
+	return flir_cci_raw(ctx, CCI_SCALER_SET_ZOOM, payload, sizeof(payload),
+			    NULL, NULL);
+}
+
+/* Zoom about the image centre */
 int flir_cci_set_zoom(struct flir_ctx *ctx, int factor)
 {
-	uint8_t payload[4];
-	put32be(payload, (uint32_t)factor);
-	return flir_cci_raw(ctx, CCI_SCALER_SET_ZOOM, payload, 4, NULL, NULL);
+	return flir_cci_set_zoom_params(ctx, (uint32_t)factor,
+					FLIR_WIDTH / 2, FLIR_HEIGHT / 2);
 }
 
 int flir_cci_get_sensor_sn(struct flir_ctx *ctx, uint32_t *sn)

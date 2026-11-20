@@ -1,5 +1,9 @@
 /*
  * capture.c — V4L2 MMAP capture for FLIR ADK / Boson UVC
+ *
+ * Supports AGC8 (YU12), RAW16 (Y16) and NV12 pixel formats, and an optional
+ * frame rate via flir_open_ex(). flir_open() keeps the original signature
+ * and leaves the frame rate at the camera default.
  */
 
 #define _GNU_SOURCE
@@ -25,13 +29,15 @@ static int xioctl(int fd, unsigned long req, void *arg)
 
 static uint32_t mode_to_v4l2(enum flir_video_mode m)
 {
-	return m == FLIR_MODE_RAW16
-		? V4L2_PIX_FMT_Y16
-		: V4L2_PIX_FMT_YUV420;
+	switch (m) {
+	case FLIR_MODE_RAW16: return V4L2_PIX_FMT_Y16;
+	case FLIR_MODE_NV12:  return V4L2_PIX_FMT_NV12;
+	default:              return V4L2_PIX_FMT_YUV420;
+	}
 }
 
-struct flir_ctx *flir_open(const char *video_dev, const char *cci_dev,
-			   enum flir_video_mode mode)
+struct flir_ctx *flir_open_ex(const char *video_dev, const char *cci_dev,
+			      enum flir_video_mode mode, int fps)
 {
 	struct flir_ctx *ctx = calloc(1, sizeof(*ctx));
 	if (!ctx)
@@ -80,6 +86,21 @@ struct flir_ctx *flir_open(const char *video_dev, const char *cci_dev,
 		goto fail;
 	}
 
+	/* Frame rate: the Boson UVC interface offers 60 and 30 fps */
+	if (fps > 0) {
+		struct v4l2_streamparm parm = { .type = V4L2_BUF_TYPE_VIDEO_CAPTURE };
+		parm.parm.capture.timeperframe.numerator = 1;
+		parm.parm.capture.timeperframe.denominator = (uint32_t)fps;
+		if (xioctl(ctx->vfd, VIDIOC_S_PARM, &parm) < 0) {
+			perror("VIDIOC_S_PARM");
+			goto fail;
+		}
+		struct v4l2_fract *t = &parm.parm.capture.timeperframe;
+		if (t->numerator == 0 || t->denominator != (uint32_t)fps * t->numerator)
+			fprintf(stderr, "Camera chose %u/%u s per frame instead of 1/%d\n",
+				t->numerator, t->denominator, fps);
+	}
+
 	/* Request MMAP buffers */
 	struct v4l2_requestbuffers req = {
 		.count  = NUM_BUFS,
@@ -126,6 +147,12 @@ fail:
 	close(ctx->vfd);
 	free(ctx);
 	return NULL;
+}
+
+struct flir_ctx *flir_open(const char *video_dev, const char *cci_dev,
+			   enum flir_video_mode mode)
+{
+	return flir_open_ex(video_dev, cci_dev, mode, 0);
 }
 
 void flir_close(struct flir_ctx *ctx)

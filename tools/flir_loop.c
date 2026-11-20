@@ -10,6 +10,10 @@
  *   unit: R (raw counts), C, F, K
  *   spot: 0|1 center spot meter box
  *   nr  : 0|1 temporal noise reduction (default on)
+ *
+ * -f 30|60 selects the camera frame rate. Frozen input (FFC or sysctrl freeze,
+ * detected by identical frames) holds the last output and restarts denoise.
+ * The CCI port is only used for the periodic FPA read.
  */
 
 #define _GNU_SOURCE
@@ -127,9 +131,10 @@ int main(int argc, char **argv)
 	float cal_s = FLIR_CAL_COUNTS_PER_DEG;
 	uint16_t cal_r = FLIR_CAL_RAW_AT_FPA;
 	struct settings s = { .lut = FLIR_LUT_IRONBOW, .unit = FLIR_UNIT_RAW, .spot = 1, .nr = 1 };
+	int fps = 0;
 	int opt;
 
-	while ((opt = getopt(argc, argv, "d:c:o:k:p:u:s:r:")) != -1) {
+	while ((opt = getopt(argc, argv, "d:c:o:k:p:u:s:r:f:")) != -1) {
 		switch (opt) {
 		case 'd': vdev = optarg; break;
 		case 'c': cdev = optarg; break;
@@ -139,13 +144,17 @@ int main(int argc, char **argv)
 		case 'u': s.unit = parse_unit(optarg[0]); break;
 		case 's': cal_s = strtof(optarg, NULL); break;
 		case 'r': cal_r = (uint16_t)atoi(optarg); break;
+		case 'f':
+			fps = atoi(optarg);
+			if (fps != 30 && fps != 60) { vdev = NULL; optind = argc; }
+			break;
 		default: vdev = NULL; optind = argc; break;
 		}
 	}
 	if (!vdev || !odev) {
 		fprintf(stderr,
 			"Usage: %s -d /dev/videoX -o /dev/videoLOOP [-c /dev/ttyACM0]\n"
-			"          [-k ctlfile] [-p lut] [-u R|C|F|K] [-s counts/degC] [-r raw@FPA]\n"
+			"          [-k ctlfile] [-p lut] [-u R|C|F|K] [-s counts/degC] [-r raw@FPA] [-f 30|60]\n"
 			"  ctlfile (default /tmp/flir_loop.ctl): lut=N unit=C spot=0|1 nr=0|1\n",
 			argv[0]);
 		return 2;
@@ -154,7 +163,7 @@ int main(int argc, char **argv)
 	int ofd = open_loopback(odev);
 	if (ofd < 0)
 		return 1;
-	struct flir_ctx *ctx = flir_open(vdev, NULL, FLIR_MODE_RAW16);
+	struct flir_ctx *ctx = flir_open_ex(vdev, NULL, FLIR_MODE_RAW16, fps);
 	if (!ctx || flir_stream_start(ctx)) {
 		fprintf(stderr, "Failed to open/stream %s\n", vdev);
 		return 1;
@@ -165,6 +174,8 @@ int main(int argc, char **argv)
 
 	static uint16_t clean[W * H], g2r[256];
 	static int32_t nr_acc[W * H];
+	static uint16_t prev[W * H];
+	int have_prev = 0, frozen = 0;
 	int nr_was = 0;
 	static uint8_t gray[W * H], rgb[W * H * 3], out_rgb[OW * H * 3], yuyv[OW * H * 2];
 	static uint8_t grey_lut[256][3], inv_lut[256][3];
@@ -186,7 +197,26 @@ int main(int argc, char **argv)
 		}
 		if (fr.len != (size_t)W * H * 2)
 			continue; /* first frame after format switch can be short */
-		const uint16_t *raw = fr.data;
+		const uint16_t *cam = fr.data;
+		/* FFC / freeze: the camera repeats one image. Compare interior rows
+		 * (row 0 and 511 skipped in case telemetry lands there). */
+		if (have_prev && !memcmp(cam + W, prev + W, (size_t)W * (H - 2) * 2)) {
+			if (frozen++ == 0)
+				fprintf(stderr, "input frozen (FFC or freeze): holding output\n");
+			if (write(ofd, yuyv, sizeof(yuyv)) != (ssize_t)sizeof(yuyv)) {
+				perror("write loopback");
+				break;
+			}
+			continue;
+		}
+		if (frozen) {
+			fprintf(stderr, "input resumed after %d frozen frames, denoise restarted\n", frozen);
+			frozen = 0;
+			nr_was = 0; /* FFC replaced per-pixel offsets: drop old history */
+		}
+		memcpy(prev, cam, sizeof(prev));
+		have_prev = 1;
+		const uint16_t *raw = cam;
 		if (s.nr) {
 			/* 20 counts ~ 3x measured temporal noise (6.6) */
 			flir_denoise(raw, clean, nr_acc, W * H, 20, !nr_was);

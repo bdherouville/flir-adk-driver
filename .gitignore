@@ -16,3 +16,7 @@ flir_ctl
 flir_loop
 __pycache__/
 test_accel
+test_cci
+
+# FLIR SDK / IDD / GUI downloads (licensed, do not commit)
+FLIR/

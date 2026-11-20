@@ -1,6 +1,7 @@
 -- vlc_flir.lua — FLIR Boson controls for VLC
 -- Install: cp tools/vlc_flir.lua ~/.local/share/vlc/lua/extensions/  then View → FLIR Boson
--- Palette/units/spot go to flir_loop's control file; FFC/gain go to the camera via flir_ctl.
+-- Palette/units/spot go to flir_loop's control file; gain, FFC, FFC mode, camera filters,
+-- status and save (with confirm) go to the camera via flir_ctl.
 
 -- Edit these to match your setup
 local FLIR_CTL = os.getenv("HOME") .. "/Lab/flir-adk-driver/flir_ctl"
@@ -10,7 +11,7 @@ local CTL_FILE = "/tmp/flir_loop.ctl"
 local d, w = nil, {}
 
 function descriptor()
-	return { title = "FLIR Boson", version = "1.0", capabilities = {} }
+	return { title = "FLIR Boson", version = "1.1", capabilities = {} }
 end
 
 local function q(s) return "'" .. tostring(s):gsub("'", "'\\''") .. "'" end
@@ -52,7 +53,28 @@ function activate()
 	d:add_button("Apply gain", function() flir_ctl("gain " .. w.gain:get_value()) end, 1, 6)
 	d:add_button("Run FFC", function() flir_ctl("ffc") end, 2, 6)
 	d:add_button("FPA temp", function() flir_ctl("fpa") end, 1, 7)
-	w.status = d:add_label("", 1, 8, 2)
+	d:add_label("FFC mode", 1, 8)
+	w.ffc = d:add_dropdown(2, 8)
+	w.ffc:add_value("Auto", 1); w.ffc:add_value("Manual", 0)
+	d:add_button("Apply FFC mode", function() flir_ctl("ffc-mode " .. w.ffc:get_value()) end, 1, 9)
+	w.tf = d:add_check_box("TF filter", true, 1, 10)
+	w.scnr = d:add_check_box("SCNR filter", true, 2, 10)
+	w.spnr = d:add_check_box("SPNR filter", true, 1, 11)
+	d:add_button("Apply filters", function()
+		for _, k in ipairs({ "tf", "scnr", "spnr" }) do
+			flir_ctl(k .. " " .. (w[k]:get_checked() and 1 or 0))
+		end
+	end, 2, 11)
+	w.confirm = d:add_check_box("Confirm flash write", false, 1, 12)
+	d:add_button("Save settings", function()
+		if w.confirm:get_checked() then
+			flir_ctl("save --confirm")
+		else
+			w.status:set_text("tick 'Confirm flash write' first: save writes the camera's flash")
+		end
+	end, 2, 12)
+	d:add_button("Camera status", function() flir_ctl("status") end, 1, 13)
+	w.status = d:add_label("", 1, 14, 2)
 	d:show()
 end
 

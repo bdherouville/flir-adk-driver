@@ -35,6 +35,21 @@ int main(void)
 		assert(g2r[g] >= g2r[g - 1]);
 	assert(g2r[0] >= 22000 && g2r[255] <= 23000 && g2r[255] - g2r[0] > 900);
 
+	/* Linear-percent blend: 95% in a narrow cold band, 5% far hotter. Pure HEQ
+	 * puts the two modes nearly adjacent in gray; the linear share must open a
+	 * gap of roughly LINEAR*255. Run 30 frames so the smoothed history settles. */
+	for (int i = 0; i < W * H; i++)
+		raw[i] = (uint16_t)(i < W * H / 20 ? 23000 + i % 11 : 22000 + i % 51);
+	for (int f = 0; f < 30; f++)
+		flir_accel_generic.agc_process(raw, out, W, H, NULL);
+	int cold_max = 0, hot_min = 255;
+	for (int i = 0; i < W * H; i++) {
+		if (raw[i] < 22500 && out[i] > cold_max) cold_max = out[i];
+		if (raw[i] > 22500 && out[i] < hot_min) hot_min = out[i];
+	}
+	printf("bimodal gap: cold_max=%d hot_min=%d\n", cold_max, hot_min);
+	assert(hot_min - cold_max >= 40);
+
 	/* denoise: static noise shrinks, a real step passes through immediately */
 	static int32_t acc[W * H];
 	static uint16_t den[W * H];

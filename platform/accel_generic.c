@@ -16,10 +16,14 @@
  *   flat areas (walls, ceiling) don't eat the gray range and amplify noise.
  * - Temporal: the histogram is IIR-smoothed across frames to stop flicker.
  *   Tune SMOOTH (0 = no memory, ->1 = slow) and PLATEAU to taste.
+ * - Linear percent (like Boson agcSetLinearPercent, default 20%): the curve is
+ *   (1-LINEAR) x equalized + LINEAR x a straight ramp over the smoothed
+ *   histogram's own 0.5% tails, so sparse hot/cold objects keep separation.
  */
 #define HIST_BINS 65536
 #define PLATEAU   4.0f
 #define SMOOTH    0.8f
+#define LINEAR    0.20f
 
 static int heq_agc(const uint16_t *raw, uint8_t *out, int w, int h, void *priv)
 {
@@ -58,10 +62,20 @@ static int heq_agc(const uint16_t *raw, uint8_t *out, int w, int h, void *priv)
 	double total = 0;
 	for (int i = 0; i < HIST_BINS; i++)
 		total += smooth[i];
+	/* Linear ramp endpoints: 0.5% tails of the smoothed histogram (stable) */
 	double cdf = 0;
+	int slo = -1, shi = 0;
 	for (int i = 0; i < HIST_BINS; i++) {
 		cdf += smooth[i];
-		lut[i] = (uint8_t)(cdf * 255.0 / total + 0.5);
+		if (slo < 0 && cdf > total * 0.005) slo = i;
+		if (cdf < total * 0.995) shi = i + 1;
+	}
+	if (shi <= slo) shi = slo + 1;
+	cdf = 0;
+	for (int i = 0; i < HIST_BINS; i++) {
+		cdf += smooth[i];
+		double lin = i <= slo ? 0.0 : i >= shi ? 255.0 : 255.0 * (i - slo) / (shi - slo);
+		lut[i] = (uint8_t)((1.0 - LINEAR) * (cdf * 255.0 / total) + LINEAR * lin + 0.5);
 	}
 
 	for (int i = 0; i < n; i++)
