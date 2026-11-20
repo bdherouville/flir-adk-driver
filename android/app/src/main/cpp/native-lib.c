@@ -79,7 +79,10 @@ static int g_have_out;
 /* pipeline state (only touched by the worker thread) */
 static uint16_t prev[W * H], clean[W * H], g2r[256];
 static int32_t nr_acc[W * H];
-static int have_prev, frozen, nr_was;
+static int have_prev, frozen, nr_was, settle;
+/* frames still processed but not shown after an FFC, while the denoise and
+ * HEQ history re-converge on the new offsets; this hides the post-FFC flash */
+#define SETTLE_FRAMES 8
 static uint16_t work_buf[W * H];
 static uint8_t gray[W * H], rgb[W * H * 3], out_rgb[OW * H * 3], out_rgba[OW * H * 4];
 static uint8_t grey_lut[256][3], inv_lut[256][3];
@@ -136,6 +139,7 @@ static void process_frame(const uint16_t *cam)
 		LOGI("input resumed after %d frozen frames", frozen);
 		frozen = 0;
 		nr_was = 0;
+		settle = SETTLE_FRAMES;
 	}
 	memcpy(prev, cam, sizeof(prev));
 	have_prev = 1;
@@ -192,8 +196,12 @@ static void process_frame(const uint16_t *cam)
 		out_rgba[i * 4 + 3] = 255;
 	}
 	pthread_mutex_lock(&g_out_lock);
-	memcpy(g_rgba, out_rgba, sizeof g_rgba);
-	g_have_out = 1;
+	if (settle > 0)
+		settle--;           /* keep showing the pre-FFC image */
+	else {
+		memcpy(g_rgba, out_rgba, sizeof g_rgba);
+		g_have_out = 1;
+	}
 	post_locked();
 	pthread_mutex_unlock(&g_out_lock);
 	stats(t0);
@@ -439,7 +447,7 @@ Java_dev_thermalcam_boson_NativeBridge_nativeStart(JNIEnv *env, jclass cls, jint
 		grey_lut[i][0] = grey_lut[i][1] = grey_lut[i][2] = (uint8_t)i;
 		inv_lut[i][0] = inv_lut[i][1] = inv_lut[i][2] = (uint8_t)(255 - i);
 	}
-	have_prev = frozen = nr_was = 0;
+	have_prev = frozen = nr_was = settle = 0;
 
 	libusb_set_option(NULL, LIBUSB_OPTION_NO_DEVICE_DISCOVERY);
 	int r = libusb_init(&g_usb);

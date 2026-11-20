@@ -28,7 +28,10 @@ import android.widget.TextView
 import android.widget.Toast
 import dev.thermalcam.boson.cci.CciClient
 import dev.thermalcam.boson.cci.CciParams
+import android.os.SystemClock
+import android.util.Log
 import java.io.File
+import kotlin.math.roundToInt
 import java.util.concurrent.ScheduledFuture
 
 class MainActivity : Activity(), SurfaceHolder.Callback {
@@ -38,6 +41,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         const val PID = 0x4007
         const val ACTION_USB_PERMISSION = "dev.thermalcam.boson.USB_PERMISSION"
         const val FPA_PERIOD_MS = 5000L
+        const val FPA_ALPHA = 0.17           // EMA over the 5 s polls, ~30 s time constant
+        const val WARM_WINDOW_MS = 120_000L  // warm when FPA moved <= WARM_SPAN_CX10 over this window
+        const val WARM_SPAN_CX10 = 2         // 0.2 degC
         const val REQ_CAMERA = 1
         const val GAIN_LOW = 1  // bosonSetGainMode: 0 high, 1 low, 2 auto
         const val GAIN_AUTO = 2
@@ -69,6 +75,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private var updatingUi = false
     private var settingsDialog: CameraSettingsDialog? = null
     private var gainMode: Int? = null // camera gain mode from CCI, null = unknown
+    private val prefs by lazy { getSharedPreferences("camera", MODE_PRIVATE) } // camera settings to re-apply on connect
+    private val fpaHist = ArrayDeque<Pair<Long, Int>>() // (time ms, FPA cx10) during warm-up
+    private var fpaSmooth: Double? = null
+    private var warm = false
 
     // status readout parts
     private var fpaText = "FPA --"
@@ -298,6 +308,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         device = null
         NativeBridge.nativeSetFpa(0)
         gainMode = null
+        fpaHist.clear()
+        fpaSmooth = null
+        warm = false
         fpaText = "FPA --"
         myriadText = "Myriad --"
         idText = ""
@@ -308,7 +321,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private class CamState(val id: String, val values: Map<String, Double?>)
 
     private fun startCci(c: CciClient, poll: Boolean = true) {
+        // the camera powers up with its defaults: re-apply what the user set last time (poll = fresh connect)
+        val saved = if (poll) prefs.all.mapNotNull { (n, v) -> CciParams.find(n)?.let { it to (v as Float).toDouble() } } else emptyList()
         c.enqueue({
+            saved.forEach { (p, v) -> if (!c.setParam(p, v)) Log.w("BosonApp", "re-apply ${p.name}=$v failed") }
             val id = "fw ${c.softwareRev() ?: "?"} · SN ${c.serialNumber() ?: "?"} · PN ${c.partNumber() ?: "?"}"
             CamState(id, listOf("gain", "ffc-mode", "tf", "scnr", "spnr").associateWith { n -> c.getParam(CciParams.find(n)!!) })
         }) { s ->
@@ -330,14 +346,36 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         fpaTask = c.every(FPA_PERIOD_MS) {
             val fpa = c.fpaTempCx10()
             val myr = c.getParam(myriad)
-            NativeBridge.nativeSetFpa(fpa ?: 0)
             runOnUiThread {
                 if (cci !== c) return@runOnUiThread
+                onFpa(c, fpa)
                 fpaText = if (fpa != null) "FPA %.1f °C".format(fpa / 10.0) else "FPA --"
                 myriadText = if (myr != null) "Myriad %.1f °C".format(myr) else "Myriad --"
                 refreshStatus()
             }
         }
+    }
+
+    /** Smooth the FPA reference, and detect the end of warm-up (then one FFC). UI thread. */
+    private fun onFpa(c: CciClient, fpa: Int?) {
+        if (fpa == null) {
+            fpaSmooth = null
+            NativeBridge.nativeSetFpa(0) // labels fall back to raw counts
+            return
+        }
+        val s = fpaSmooth?.let { it + (fpa - it) * FPA_ALPHA } ?: fpa.toDouble()
+        fpaSmooth = s
+        NativeBridge.nativeSetFpa(s.roundToInt())
+        if (warm) return
+        val now = SystemClock.elapsedRealtime()
+        fpaHist.addLast(now to fpa)
+        while (now - fpaHist.first().first > WARM_WINDOW_MS) fpaHist.removeFirst()
+        val span = fpaHist.maxOf { it.second } - fpaHist.minOf { it.second }
+        if (now - fpaHist.first().first < WARM_WINDOW_MS - FPA_PERIOD_MS || span > WARM_SPAN_CX10) return
+        warm = true
+        fpaHist.clear()
+        c.enqueue({ c.runFfc() }) { ok -> setMessage(if (ok) "Warmed up: FFC done, temperatures stable" else "Warmed up (FFC failed)") }
+        refreshStatus()
     }
 
     private fun setCameraParam(name: String, v: Double) {
@@ -352,7 +390,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     }
 
     private fun onParamSet(name: String, v: Double) {
-        if (name != "gain" || cci == null) return // late reply after disconnect
+        if (cci == null) return // late reply after disconnect
+        if (name != "freeze") prefs.edit().putFloat(name, v.toFloat()).apply() // never come up frozen
+        if (name != "gain") return
         gainMode = v.toInt()
         pushSettings()
         refreshStatus()
@@ -410,6 +450,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         statusText.text = buildString {
             appendLine(message)
             appendLine("$fpaText · $myriadText")
+            if (cci != null && !warm) appendLine("Warming up: temperatures approximate")
             if (gainMode == GAIN_LOW) appendLine("Low gain: overlay shows raw counts (calibration is high gain only)")
             else if (gainMode == GAIN_AUTO) appendLine("Auto gain: temperatures assume high gain (hot scenes may read wrong)")
             append(idText)

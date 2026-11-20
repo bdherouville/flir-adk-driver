@@ -125,6 +125,11 @@ If the switch ever fails, logcat (tag `BosonNative`) shows `dropping 491520-byte
 - **Power and USB host.** The phone must support USB host mode (OTG) and must supply the
   camera's power (the descriptor declares 500 mA). If the camera keeps disconnecting, use a
   powered OTG hub.
+- **Warm-up and FFC.** After power-on the camera's auto FFC fires every ~20 s while the FPA warms.
+  The app hides each FFC (holds the image for the frozen frames plus 8 settle frames), smooths the
+  FPA reference (~30 s EMA), shows "Warming up" until the FPA moves <= 0.2 degC over 2 min, then runs
+  one FFC. Camera settings changed in the app are stored and re-applied on every connect (not
+  `freeze`); the camera's flash is not touched.
 - One camera at a time. The HEQ state in `accel_generic.c` is per process.
 - **Tested on** Lenovo Tab K10 TB-X6C6F (Android 12, MediaTek MT8768 MUSB): current libusb
   build, picture, °C overlay, CCI readout, video recording. Samsung Galaxy S25 Ultra (Android
