@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Typeface
 import android.text.InputType
+import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -25,6 +26,7 @@ class CameraSettingsDialog(
 ) {
     private val list = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 16, 32, 16) }
     private var title = "All camera settings"
+    private val open = mutableSetOf<String>() // expanded sections, kept across refresh
     private lateinit var dialog: AlertDialog
 
     fun show() {
@@ -51,8 +53,33 @@ class CameraSettingsDialog(
             if (!dialog.isShowing) return@enqueue
             dialog.setTitle(title)
             list.removeAllViews()
-            values.forEach { (p, v) -> list.addView(row(p, v)) }
+            values.groupBy { (p, _) -> group(p.name) }.toSortedMap(compareBy { GROUPS.indexOf(it) })
+                .forEach { (g, rows) -> list.addView(section(g, rows)) }
         }
+    }
+
+    /** Collapsible section: tap the header to show / hide its rows. */
+    private fun section(name: String, rows: List<Pair<CciParam, Double?>>): LinearLayout {
+        val body = LinearLayout(act).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 0, 0, 0)
+            visibility = if (name in open) View.VISIBLE else View.GONE
+            rows.forEach { (p, v) -> addView(row(p, v)) }
+        }
+        val header = TextView(act).apply {
+            fun label() = "${if (body.visibility == View.VISIBLE) "▾" else "▸"} $name (${rows.size})"
+            text = label()
+            textSize = 18f
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, 20, 0, 20)
+            setOnClickListener {
+                val show = body.visibility != View.VISIBLE
+                body.visibility = if (show) View.VISIBLE else View.GONE
+                if (show) open += name else open -= name
+                text = label()
+            }
+        }
+        return LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; addView(header); addView(body) }
     }
 
     private fun fmt(p: CciParam, v: Double?): String = formatValue(p.type, v)
@@ -107,3 +134,17 @@ internal fun formatValue(type: Char, v: Double?): String = when {
 
 /** Parse user input; accepts ',' as the decimal mark (French, German, ... keyboards). */
 internal fun parseValue(text: String): Double? = text.trim().replace(',', '.').toDoubleOrNull()
+
+/** Section order in the dialog; group() maps every CciParams name to one of these. */
+internal val GROUPS = listOf("Sensor and flat-field correction (FFC)", "Noise filters", "Camera AGC (8-bit stream)",
+    "Video output", "Image statistics", "Status", "Radiometry (radiometric cameras only)")
+
+internal fun group(n: String): String = when {
+    n.startsWith("ffc") || n == "gain" -> GROUPS[0]
+    n.startsWith("tf") || n.startsWith("scnr") || n.startsWith("spnr") || n == "bpr" -> GROUPS[1]
+    n.startsWith("agc") -> GROUPS[2]
+    n.startsWith("dvo") || n in setOf("sym", "telemetry", "lut", "freeze") -> GROUPS[3]
+    n.startsWith("stats") -> GROUPS[4]
+    n in setOf("tlinear", "radiometry", "spotmeter") -> GROUPS[6]
+    else -> GROUPS[5]
+}

@@ -18,8 +18,14 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.MediaStore
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.SurfaceHolder
+import android.view.View
+import android.view.WindowInsets
+import android.text.InputType
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.ScrollView
@@ -43,7 +49,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         const val FPA_PERIOD_MS = 5000L
         const val FPA_ALPHA = 0.17           // EMA over the 5 s polls, ~30 s time constant
         const val WARM_WINDOW_MS = 120_000L  // warm when FPA moved <= WARM_SPAN_CX10 over this window
-        const val WARM_SPAN_CX10 = 2         // 0.2 degC
+        const val WARM_SPAN_CX10 = 10        // 1.0 degC = camera FFC trigger: <= ~1 auto FFC per 2 min
         const val REQ_CAMERA = 1
         const val GAIN_LOW = 1  // bosonSetGainMode: 0 high, 1 low, 2 auto
         const val GAIN_AUTO = 2
@@ -79,6 +85,10 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
     private val fpaHist = ArrayDeque<Pair<Long, Int>>() // (time ms, FPA cx10) during warm-up
     private var fpaSmooth: Double? = null
     private var warm = false
+    private val display by lazy { getSharedPreferences("display", MODE_PRIVATE) } // palette, units, spot...
+    private val paletteIds by lazy { listOf(R.id.palette_iron, R.id.palette_white, R.id.palette_black) }
+    private val unitIds by lazy { listOf(R.id.unit_c, R.id.unit_f, R.id.unit_k, R.id.unit_raw) }
+    private var fullscreen = false
 
     // status readout parts
     private var fpaText = "FPA --"
@@ -130,6 +140,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         thermalView.holder.addCallback(this)
         applyOrientation(resources.configuration)
 
+        restoreDisplay()
+        setupImageGestures()
+
         // display settings: native only
         paletteGroup.setOnCheckedChangeListener { _, _ -> pushSettings() }
         unitGroup.setOnCheckedChangeListener { _, _ -> pushSettings() }
@@ -155,6 +168,7 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
                 setMessage(if (ok) "FFC done" else "FFC failed (status 0x%08X)".format(st))
             }
         }
+        findViewById<Button>(R.id.calibrate_button).setOnClickListener { calibrateDialog() }
         findViewById<Button>(R.id.save_button).setOnClickListener { confirmSave() }
         findViewById<Button>(R.id.all_settings_button).setOnClickListener {
             val c = cci ?: return@setOnClickListener setMessage("CCI not connected")
@@ -264,6 +278,93 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
         val unit = if (gainMode == GAIN_LOW) 0
             else when (unitGroup.checkedRadioButtonId) { R.id.unit_c -> 1; R.id.unit_f -> 2; R.id.unit_k -> 3; else -> 0 }
         NativeBridge.nativeSetSettings(lut, unit, spotSwitch.isChecked, nrSwitch.isChecked)
+        display.edit()
+            .putInt("palette", paletteIds.indexOf(paletteGroup.checkedRadioButtonId))
+            .putInt("unit", unitIds.indexOf(unitGroup.checkedRadioButtonId))
+            .putBoolean("spot", spotSwitch.isChecked)
+            .putBoolean("nr", nrSwitch.isChecked)
+            .apply()
+    }
+
+    /** Display settings from the last run (before the listeners are attached). */
+    private fun restoreDisplay() {
+        paletteIds.getOrNull(display.getInt("palette", -1))?.let { paletteGroup.check(it) }
+        unitIds.getOrNull(display.getInt("unit", -1))?.let { unitGroup.check(it) }
+        spotSwitch.isChecked = display.getBoolean("spot", spotSwitch.isChecked)
+        nrSwitch.isChecked = display.getBoolean("nr", nrSwitch.isChecked)
+        NativeBridge.nativeSetSpot(display.getInt("spotX", NativeBridge.SENSOR_WIDTH / 2),
+            display.getInt("spotY", NativeBridge.OUT_HEIGHT / 2))
+        NativeBridge.nativeSetCalOffset(display.getFloat("calOffset", 0f))
+    }
+
+    /** Put the cross on something of known temperature, type it in: the offset applies to every reading. */
+    private fun calibrateDialog() {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
+            hint = "e.g. 34 (skin), or a thermometer reading"
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Calibrate at the spot")
+            .setMessage("True temperature under the cross, in °C. Current offset: %+.1f °C".format(display.getFloat("calOffset", 0f)))
+            .setView(input)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setNeutralButton("Reset") { _, _ -> setCalOffset(0f) }
+            .setPositiveButton("Set") { _, _ ->
+                val t = input.text.toString().replace(',', '.').toFloatOrNull()
+                    ?: return@setPositiveButton setMessage("Calibration: not a number")
+                val off = NativeBridge.nativeCalibrate(t)
+                if (off.isNaN()) setMessage("Calibration needs a live image and the camera temperature (CCI)")
+                else setCalOffset(off)
+            }
+            .show()
+    }
+
+    private fun setCalOffset(off: Float) {
+        NativeBridge.nativeSetCalOffset(off)
+        display.edit().putFloat("calOffset", off).apply()
+        setMessage(if (off == 0f) "Calibration reset" else "Calibrated: offset %+.1f °C".format(off))
+    }
+
+    /** Tap: move the spot meter there. Long press: spot back to the centre. Double tap: full screen. */
+    @Suppress("ClickableViewAccessibility")
+    private fun setupImageGestures() {
+        val gd = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                val x = (e.x * NativeBridge.OUT_WIDTH / thermalView.width).toInt()
+                val y = (e.y * NativeBridge.OUT_HEIGHT / thermalView.height).toInt()
+                if (x < NativeBridge.SENSOR_WIDTH) placeSpot(x, y) // taps on the colour bar do nothing
+                return true
+            }
+            override fun onLongPress(e: MotionEvent) = placeSpot(NativeBridge.SENSOR_WIDTH / 2, NativeBridge.OUT_HEIGHT / 2)
+            override fun onDoubleTap(e: MotionEvent): Boolean { setFullscreen(!fullscreen); return true }
+        })
+        thermalView.setOnTouchListener { _, e -> gd.onTouchEvent(e) }
+    }
+
+    private fun placeSpot(x: Int, y: Int) {
+        NativeBridge.nativeSetSpot(x, y)
+        display.edit().putInt("spotX", x).putInt("spotY", y).apply()
+        if (!spotSwitch.isChecked) spotSwitch.isChecked = true // listener pushes + saves
+    }
+
+    private fun setFullscreen(on: Boolean) {
+        fullscreen = on
+        val vis = if (on) View.GONE else View.VISIBLE
+        controlsScroll.visibility = vis
+        findViewById<View>(R.id.capture_row).visibility = vis
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.let { if (on) it.hide(WindowInsets.Type.systemBars()) else it.show(WindowInsets.Type.systemBars()) }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = if (on) View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY else 0
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (fullscreen) setFullscreen(false) else @Suppress("DEPRECATION") super.onBackPressed()
     }
 
     private fun connect() {
@@ -453,7 +554,9 @@ class MainActivity : Activity(), SurfaceHolder.Callback {
             if (cci != null && !warm) appendLine("Warming up: temperatures approximate")
             if (gainMode == GAIN_LOW) appendLine("Low gain: overlay shows raw counts (calibration is high gain only)")
             else if (gainMode == GAIN_AUTO) appendLine("Auto gain: temperatures assume high gain (hot scenes may read wrong)")
-            append(idText)
+            display.getFloat("calOffset", 0f).let { if (it != 0f) appendLine("Calibration offset %+.1f °C".format(it)) }
+            appendLine(idText)
+            append("Image: tap = move spot · long-press = centre spot · double-tap = full screen")
         }
     }
 }

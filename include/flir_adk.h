@@ -196,6 +196,10 @@ struct flir_overlay_opts {
 	uint16_t spot_row_start, spot_row_end;
 	uint16_t spot_col_start, spot_col_end;
 	uint16_t spot_mean;
+	/* Crosshair + 5x5 point reading: at (cross_x, cross_y) in sensor pixels;
+	 * cross_x == 0 && cross_y == 0 means the image centre. cross_hide = no crosshair. */
+	uint16_t cross_x, cross_y;
+	int      cross_hide;
 	/* Temperature display: set temp_unit != RAW + provide calibration */
 	enum flir_temp_unit temp_unit;
 	float    counts_per_deg;    /* raw counts per °C (FLIR_CAL_COUNTS_PER_DEG) */

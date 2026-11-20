@@ -293,29 +293,37 @@ int flir_overlay(const uint8_t *src_rgb, const uint16_t *raw,
 	/* Color bar with labels */
 	draw_colorbar_labels(dst_rgb, ow, w, h, opts);
 
-	/* Center crosshair */
+	/* Crosshair (image centre unless the caller moved it) */
 	int cx = w / 2, cy = h / 2;
-	draw_crosshair(dst_rgb, ow, h, cx, cy);
+	if (opts->cross_x || opts->cross_y) {
+		cx = opts->cross_x < w ? opts->cross_x : w - 1;
+		cy = opts->cross_y < h ? opts->cross_y : h - 1;
+	}
+	if (!opts->cross_hide) {
+		draw_crosshair(dst_rgb, ow, h, cx, cy);
 
-	/* Center spot value (average 5x5 around center) */
-	long sum = 0; int cnt = 0;
-	for (int dy = -2; dy <= 2; dy++)
-		for (int dx = -2; dx <= 2; dx++) {
-			int px = cx + dx, py = cy + dy;
-			if (px >= 0 && px < w && py >= 0 && py < h) {
-				sum += raw[py * w + px];
-				cnt++;
+		/* Center spot value (average 5x5 around center) */
+		long sum = 0; int cnt = 0;
+		for (int dy = -2; dy <= 2; dy++)
+			for (int dx = -2; dx <= 2; dx++) {
+				int px = cx + dx, py = cy + dy;
+				if (px >= 0 && px < w && py >= 0 && py < h) {
+					sum += raw[py * w + px];
+					cnt++;
+				}
 			}
-		}
-	uint16_t center_val = cnt ? (uint16_t)(sum / cnt) : 0;
+		uint16_t center_val = cnt ? (uint16_t)(sum / cnt) : 0;
 
-	/* Center value label */
-	char label[24];
-	fmt_value(label, sizeof(label), center_val, opts);
-	int lx = cx + 24, ly = cy - 20;
-	int ll = (int)strlen(label);
-	draw_box(dst_rgb, ow, h, lx - 3, ly - 2, ll * CHAR_W + 6, CHAR_H + 4, 0, 0, 0);
-	draw_text(dst_rgb, ow, h, lx, ly, label, 255, 255, 255);
+		/* Center value label */
+		char label[24];
+		fmt_value(label, sizeof(label), center_val, opts);
+		int ll = (int)strlen(label);
+		int lx = cx + 24, ly = cy - 20;
+		if (lx + ll * CHAR_W + 3 > w) lx = cx - 24 - ll * CHAR_W; /* keep it off the colour bar */
+		if (ly < 2) ly = cy + 8;
+		draw_box(dst_rgb, ow, h, lx - 3, ly - 2, ll * CHAR_W + 6, CHAR_H + 4, 0, 0, 0);
+		draw_text(dst_rgb, ow, h, lx, ly, label, 255, 255, 255);
+	}
 
 	/* FPA temperature (top-left corner) */
 	if (opts->fpa_temp_cx10 != 0) {

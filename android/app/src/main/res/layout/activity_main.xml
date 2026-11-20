@@ -89,6 +89,8 @@
 
             <Button android:id="@+id/ffc_button" android:layout_width="match_parent"
                 android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Run FFC" />
+            <Button android:id="@+id/calibrate_button" android:layout_width="match_parent"
+                android:layout_height="wrap_content" android:text="Calibrate spot…" />
 
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
                 android:layout_marginTop="8dp" android:text="Gain mode" android:textColor="#AAAAAA" />

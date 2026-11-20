@@ -155,7 +155,7 @@ Since this camera variant has no hardware radiometry, temperature values shown o
 
 - Measured 2026-11-18 on this unit, high gain, two-point: ceiling @ 21°C = 22383 counts, skin @ ~34°C = 23313 counts → 71.5 counts/°C, raw at FPA (37.9°C) = 23592
 - Do NOT use the frame mean as reference: FPA temp (~38°C) is far above the scene, which made faces read ~57°C
-- Unverified: whether `RAW_AT_FPA` stays valid after warm-up / FFC. Re-measure with a known reference if readings drift
+- Unverified: whether `RAW_AT_FPA` stays valid after warm-up / FFC. Re-measure with a known reference if readings drift. 2026-11-20 (window heater on, warm): hand read ~43 °C, so the Android app has a user offset (**Calibrate spot…**, `nativeCalibrate`, stored in prefs)
 - RAW16 values are full 16-bit (~22000), not 14-bit — never mask with 0x3FFF
 
 ## Key constraints

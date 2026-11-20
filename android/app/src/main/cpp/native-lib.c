@@ -13,6 +13,7 @@
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
 #include <libusb.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
@@ -70,6 +71,10 @@ static atomic_int g_unit = FLIR_UNIT_RAW;
 static atomic_int g_spot = 1;
 static atomic_int g_nr = 1;
 static atomic_int g_fpa_cx10 = 0;
+/* spot crosshair in sensor pixels (tap to move); reading = 5x5 mean around it */
+static atomic_int g_spot_x = W / 2, g_spot_y = H / 2;
+static atomic_int g_spot_raw;      /* last 5x5 raw mean at the spot, for nativeCalibrate */
+static atomic_int g_cal_cx100;     /* user calibration offset, 0.01 degC, added to every reading */
 
 static pthread_mutex_t g_out_lock = PTHREAD_MUTEX_INITIALIZER; /* g_win, g_rgba, g_have_out */
 static ANativeWindow *g_win;
@@ -155,13 +160,19 @@ static void process_frame(const uint16_t *cam)
 	}
 	nr_was = nr;
 
+	{
+		int sx = atomic_load(&g_spot_x), sy = atomic_load(&g_spot_y), sum = 0, n = 0;
+		for (int y = sy - 2; y <= sy + 2; y++)
+			for (int x = sx - 2; x <= sx + 2; x++)
+				if (x >= 0 && x < W && y >= 0 && y < H) { sum += raw[y * W + x]; n++; }
+		atomic_store(&g_spot_raw, n ? sum / n : 0);
+	}
+
 	uint16_t lo = 0xFFFF, hi = 0;
 	for (int i = 0; i < W * H; i++) {
 		if (raw[i] < lo) lo = raw[i];
 		if (raw[i] > hi) hi = raw[i];
 	}
-	struct flir_spot_result spot = {0};
-	flir_sw_spotmeter(raw, W, H, 206, 306, 220, 420, &spot);
 	flir_accel_generic.agc_process(raw, gray, W, H, NULL);
 
 	const uint8_t (*pal)[3] = lut == FLIR_LUT_WHITEHOT ? (const uint8_t (*)[3])grey_lut :
@@ -175,13 +186,12 @@ static void process_frame(const uint16_t *cam)
 	struct flir_overlay_opts ov = {
 		.raw_min = lo, .raw_max = hi,
 		.fpa_temp_cx10 = (int16_t)fpa,
-		.spot_enabled = spot_on,
-		.spot_row_start = 206, .spot_row_end = 306,
-		.spot_col_start = 220, .spot_col_end = 420,
-		.spot_mean = (uint16_t)spot.mean,
+		.cross_x = (uint16_t)atomic_load(&g_spot_x),
+		.cross_y = (uint16_t)atomic_load(&g_spot_y),
+		.cross_hide = !spot_on,
 		.temp_unit = fpa ? (enum flir_temp_unit)unit : FLIR_UNIT_RAW,
 		.counts_per_deg = FLIR_CAL_COUNTS_PER_DEG,
-		.ref_temp_c = fpa / 10.0f,
+		.ref_temp_c = fpa / 10.0f + atomic_load(&g_cal_cx100) / 100.0f,
 		.ref_raw = FLIR_CAL_RAW_AT_FPA,
 		.palette = pal,
 		.gray_to_raw = g2r,
@@ -548,10 +558,39 @@ Java_dev_thermalcam_boson_NativeBridge_nativeSetSettings(JNIEnv *env, jclass cls
 }
 
 JNIEXPORT void JNICALL
+Java_dev_thermalcam_boson_NativeBridge_nativeSetSpot(JNIEnv *env, jclass cls, jint x, jint y)
+{
+	(void)env; (void)cls;
+	/* 1..W-1: (0,0) means "centre" to flir_overlay */
+	atomic_store(&g_spot_x, x < 1 ? 1 : x > W - 1 ? W - 1 : x);
+	atomic_store(&g_spot_y, y < 1 ? 1 : y > H - 1 ? H - 1 : y);
+}
+
+JNIEXPORT void JNICALL
 Java_dev_thermalcam_boson_NativeBridge_nativeSetFpa(JNIEnv *env, jclass cls, jint fpa_cx10)
 {
 	(void)env; (void)cls;
 	atomic_store(&g_fpa_cx10, fpa_cx10);
+}
+
+/* Offset so the spot reads true_c now; NaN (offset unchanged) without FPA temp or a frame. */
+JNIEXPORT jfloat JNICALL
+Java_dev_thermalcam_boson_NativeBridge_nativeCalibrate(JNIEnv *env, jclass cls, jfloat true_c)
+{
+	(void)env; (void)cls;
+	int fpa = atomic_load(&g_fpa_cx10), raw = atomic_load(&g_spot_raw);
+	if (!fpa || !raw)
+		return NAN;
+	float off = true_c - (fpa / 10.0f + (raw - FLIR_CAL_RAW_AT_FPA) / FLIR_CAL_COUNTS_PER_DEG);
+	atomic_store(&g_cal_cx100, (int)lroundf(off * 100.0f));
+	return off;
+}
+
+JNIEXPORT void JNICALL
+Java_dev_thermalcam_boson_NativeBridge_nativeSetCalOffset(JNIEnv *env, jclass cls, jfloat off_c)
+{
+	(void)env; (void)cls;
+	atomic_store(&g_cal_cx100, (int)lroundf(off_c * 100.0f));
 }
 
 JNIEXPORT jboolean JNICALL

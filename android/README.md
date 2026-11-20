@@ -127,9 +127,13 @@ If the switch ever fails, logcat (tag `BosonNative`) shows `dropping 491520-byte
   powered OTG hub.
 - **Warm-up and FFC.** After power-on the camera's auto FFC fires every ~20 s while the FPA warms.
   The app hides each FFC (holds the image for the frozen frames plus 8 settle frames), smooths the
-  FPA reference (~30 s EMA), shows "Warming up" until the FPA moves <= 0.2 degC over 2 min, then runs
+  FPA reference (~30 s EMA), shows "Warming up" until the FPA moves <= 1.0 degC over 2 min (the camera's own FFC trigger), then runs
   one FFC. Camera settings changed in the app are stored and re-applied on every connect (not
   `freeze`); the camera's flash is not touched.
+- **Temperatures are approximate** (non-radiometric camera, see CLAUDE.md). On 2026-11-20 a hand read
+  ~43 degC with the 12 V window heater on (raw ~600 counts above the 18 Nov skin reference). **Calibrate
+  spot…**: put the cross on something of known temperature, enter it; the offset is stored and added to
+  every reading (Reset clears it).
 - One camera at a time. The HEQ state in `accel_generic.c` is per process.
 - **Tested on** Lenovo Tab K10 TB-X6C6F (Android 12, MediaTek MT8768 MUSB): current libusb
   build, picture, °C overlay, CCI readout, video recording. Samsung Galaxy S25 Ultra (Android
